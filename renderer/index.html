@@ -40,6 +40,9 @@
         <symbol id="i-close" viewBox="0 0 24 24">
           <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24">
+          <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
         <!-- Reasoning / "thinking": AI sparkle (4-point star + small accent star) -->
         <symbol id="i-spark" viewBox="0 0 24 24">
           <path d="M10 2.5c.8 4.4 2.4 6 6.8 6.8-4.4.8-6 2.4-6.8 6.8-.8-4.4-2.4-6-6.8-6.8 4.4-.8 6-2.4 6.8-6.8Z" fill="currentColor"/>
@@ -66,6 +69,7 @@
         <div class="titlebar-spacer"></div>
 
         <div class="bar-actions no-drag">
+          <select id="skillSelect" title="Active skill"></select>
           <select id="modelSelect" title="Active model"></select>
           <button id="listenBtn" class="iconbtn" title="Listen to call / system audio">
             <svg viewBox="0 0 24 24"><use href="#i-listen"/></svg>
@@ -127,9 +131,16 @@
           <label>Temperature <span id="tempVal" class="muted"></span>
             <input type="range" id="setTemp" min="0" max="1.5" step="0.05" />
           </label>
-          <label>System prompt
+          <label>System prompt <span class="muted small">(base — always applied)</span>
             <textarea id="setSystem" rows="3"></textarea>
           </label>
+
+          <hr />
+          <details id="skillsSection">
+            <summary>Skills <span class="muted small">— layered on the base prompt</span></summary>
+            <div id="skillList" class="skill-list"></div>
+            <button id="addSkillBtn" class="skill-add">+ Add skill</button>
+          </details>
 
           <hr />
           <label class="row">Stealth (hide from screen-share)

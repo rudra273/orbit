@@ -12,6 +12,44 @@ const DEFAULTS = {
   systemPrompt:
     'You are Orbit, a concise, helpful local AI copilot. Answer directly and briefly unless asked for detail.',
 
+  // skills — selectable "modes" layered on top of the base systemPrompt.
+  // activeSkill is the id of the chosen skill ('' = None / general).
+  activeSkill: '',
+  skills: [
+    {
+      id: 'coding',
+      name: 'Coding',
+      prompt:
+        'Act as an expert pair-programmer. Be precise and code-first: lead with the solution, ' +
+        'use fenced code blocks with the right language, and keep prose tight. Point out edge cases, ' +
+        'bugs, and tradeoffs briefly. Prefer idiomatic, production-quality code over toy snippets.'
+    },
+    {
+      id: 'interview',
+      name: 'Interview',
+      prompt:
+        'Act as a rigorous but encouraging interview coach. Ask one focused question at a time, wait ' +
+        'for the answer, then evaluate it: what was strong, what was missing, and a tighter model answer. ' +
+        'Adapt difficulty to the role the user names. Keep feedback specific and actionable.'
+    },
+    {
+      id: 'research',
+      name: 'Research',
+      prompt:
+        'Act as an analytical research assistant. Structure answers clearly: lead with a short summary, ' +
+        'then key points, pros/cons, or steps as appropriate. Distinguish facts from inference, note ' +
+        'uncertainty, and avoid filler. Use headings and bullets when they aid scanning.'
+    },
+    {
+      id: 'writing',
+      name: 'Writing',
+      prompt:
+        'Act as a sharp writing editor. When asked to write, produce clean, natural prose in the ' +
+        "requested tone. When asked to edit, tighten and clarify without changing the author's voice, " +
+        'and briefly note what you changed and why. Cut clichés and hedging.'
+    }
+  ],
+
   // window / overlay
   opacity: 0.96,
   theme: 'glass', // 'glass' | 'dark'

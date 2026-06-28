@@ -13,6 +13,7 @@ const els = {
   send: $('sendBtn'),
   stop: $('stopBtn'),
   model: $('modelSelect'),
+  skill: $('skillSelect'),
   think: $('thinkBtn'),
   mic: $('micBtn'),
   listen: $('listenBtn'),
@@ -33,12 +34,132 @@ function icon(id, cls) {
   return `<svg class="${cls || ''}" viewBox="0 0 24 24"><use href="#${id}"/></svg>`;
 }
 
+// ---- Markdown ---------------------------------------------------------------
+// Compact, dependency-free markdown → HTML for assistant messages.
+// Escapes HTML first (content is local/self-authored, but we stay safe), then
+// applies a practical subset: fenced + inline code, bold/italic, headings,
+// lists, blockquotes, links, and paragraph/line breaks. Tolerates an unclosed
+// ``` fence mid-stream so streaming text doesn't flicker.
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function inlineMd(s) {
+  // inline code first, so its contents aren't touched by other rules
+  const codes = [];
+  s = s.replace(/`([^`]+)`/g, (_, c) => {
+    codes.push(c);
+    return '@@CODE' + (codes.length - 1) + '@@';
+  });
+  // links [text](url)
+  s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
+  // bold then italic (bold uses ** or __, italic uses single * or _)
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>');
+  // restore inline code
+  s = s.replace(/@@CODE(\d+)@@/g, (_, i) => '<code>' + codes[+i] + '</code>');
+  return s;
+}
+
+function renderMarkdown(src) {
+  const text = escapeHtml(src || '');
+  const lines = text.split('\n');
+  let html = '';
+  let i = 0;
+  let listType = null; // 'ul' | 'ol' | null
+
+  const closeList = () => { if (listType) { html += '</' + listType + '>'; listType = null; } };
+
+  while (i < lines.length) {
+    let line = lines[i];
+
+    // fenced code block ``` (optional language)
+    const fence = line.match(/^\s*```(\w*)\s*$/);
+    if (fence) {
+      closeList();
+      const lang = fence[1];
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
+      i++; // skip closing fence (if missing, we just consumed to EOF — fine mid-stream)
+      html += '<pre><code' + (lang ? ' class="lang-' + lang + '"' : '') + '>' +
+        buf.join('\n') + '</code></pre>';
+      continue;
+    }
+
+    // heading #..######
+    const h = line.match(/^\s*(#{1,6})\s+(.*)$/);
+    if (h) {
+      closeList();
+      const lvl = h[1].length;
+      html += '<h' + lvl + ' class="md-h">' + inlineMd(h[2]) + '</h' + lvl + '>';
+      i++;
+      continue;
+    }
+
+    // blockquote (escapeHtml has already turned a leading ">" into "&gt;")
+    if (/^\s*&gt;\s?/.test(line)) {
+      closeList();
+      html += '<blockquote>' + inlineMd(line.replace(/^\s*&gt;\s?/, '')) + '</blockquote>';
+      i++;
+      continue;
+    }
+
+    // unordered list item
+    const ul = line.match(/^\s*[-*+]\s+(.*)$/);
+    if (ul) {
+      if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
+      html += '<li>' + inlineMd(ul[1]) + '</li>';
+      i++;
+      continue;
+    }
+    // ordered list item
+    const ol = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (ol) {
+      if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
+      html += '<li>' + inlineMd(ol[1]) + '</li>';
+      i++;
+      continue;
+    }
+
+    // blank line → paragraph break
+    if (/^\s*$/.test(line)) {
+      closeList();
+      i++;
+      continue;
+    }
+
+    // plain paragraph — gather consecutive non-special lines
+    closeList();
+    const para = [line];
+    i++;
+    while (
+      i < lines.length &&
+      !/^\s*$/.test(lines[i]) &&
+      !/^\s*```/.test(lines[i]) &&
+      !/^\s*#{1,6}\s/.test(lines[i]) &&
+      !/^\s*[-*+]\s/.test(lines[i]) &&
+      !/^\s*\d+\.\s/.test(lines[i]) &&
+      !/^\s*&gt;\s?/.test(lines[i])
+    ) { para.push(lines[i]); i++; }
+    html += '<p>' + inlineMd(para.join('<br/>')) + '</p>';
+  }
+  closeList();
+  return html;
+}
+
 // ---- Boot -------------------------------------------------------------------
 (async function init() {
   settings = await api.getSettings();
   applyTheme();
   updateThinkBtn();
   await refreshModels();
+  refreshSkills();
   bindUI();
   bindStream();
   renderEmpty();
@@ -72,6 +193,150 @@ async function refreshModels() {
   if (!r.ok) toast('Ollama not reachable — is it running?');
 }
 
+// ---- Skills -----------------------------------------------------------------
+// Populate the titlebar picker (+ the Settings copy) from settings.skills.
+// '' = None / General (base prompt only).
+function refreshSkills() {
+  const skills = settings.skills || [];
+  const sel = els.skill;
+  sel.innerHTML = '';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'General';
+  sel.appendChild(none);
+  for (const sk of skills) {
+    const o = document.createElement('option');
+    o.value = sk.id;
+    o.textContent = sk.name;
+    sel.appendChild(o);
+  }
+  sel.value = settings.activeSkill || '';
+  updateSkillUI();
+  renderSkillList();
+}
+
+function updateSkillUI() {
+  els.skill.classList.toggle('active', !!settings.activeSkill);
+  els.skill.value = settings.activeSkill || '';
+}
+
+function activeSkillObj() {
+  if (!settings.activeSkill) return null;
+  return (settings.skills || []).find((s) => s.id === settings.activeSkill) || null;
+}
+
+// Base prompt always applies; the active skill's prompt is layered beneath it.
+function composeSystemPrompt() {
+  const base = settings.systemPrompt || '';
+  const sk = activeSkillObj();
+  if (!sk) return base;
+  return base + '\n\n--- Active skill: ' + sk.name + ' ---\n' + sk.prompt;
+}
+
+// Persist the skills array, then refresh both the picker and the editor.
+async function saveSkills(skills) {
+  settings = await api.setSettings({ skills });
+  refreshSkills();
+}
+
+let skillSlug = 0;
+function makeSkillId(name) {
+  const base = (name || 'skill').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return (base || 'skill') + '-' + (++skillSlug) + '-' + (settings.skills || []).length;
+}
+
+// Build the editable list inside Settings.
+function renderSkillList() {
+  const wrap = $('skillList');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const skills = settings.skills || [];
+  if (!skills.length) {
+    const e = document.createElement('div');
+    e.className = 'muted small';
+    e.textContent = 'No skills yet. Add one to specialize Orbit.';
+    wrap.appendChild(e);
+    return;
+  }
+  for (const sk of skills) {
+    const item = document.createElement('div');
+    item.className = 'skill-item' + (settings.activeSkill === sk.id ? ' is-active' : '');
+
+    const head = document.createElement('div');
+    head.className = 'skill-item-head';
+
+    const dot = document.createElement('span');
+    dot.className = 'skill-active-dot';
+    dot.title = 'Active skill indicator';
+
+    const name = document.createElement('input');
+    name.className = 'skill-name';
+    name.type = 'text';
+    name.value = sk.name;
+    name.onchange = () => updateSkill(sk.id, { name: name.value.trim() || 'Untitled' });
+
+    const del = document.createElement('button');
+    del.className = 'skill-del';
+    del.title = 'Delete skill';
+    del.innerHTML = icon('i-trash');
+    let confirmTimer = null;
+    const resetDel = () => {
+      del.classList.remove('confirm');
+      del.innerHTML = icon('i-trash');
+      del.title = 'Delete skill';
+      clearTimeout(confirmTimer);
+      confirmTimer = null;
+    };
+    del.onclick = () => {
+      if (del.classList.contains('confirm')) { resetDel(); deleteSkill(sk.id); return; }
+      // arm: ask for a second click to confirm
+      del.classList.add('confirm');
+      del.textContent = 'Delete?';
+      del.title = 'Click again to confirm';
+      confirmTimer = setTimeout(resetDel, 3000);
+    };
+
+    head.appendChild(dot);
+    head.appendChild(name);
+    head.appendChild(del);
+
+    const prompt = document.createElement('textarea');
+    prompt.className = 'skill-prompt';
+    prompt.value = sk.prompt;
+    prompt.placeholder = 'What should Orbit do in this skill?';
+    prompt.onchange = () => updateSkill(sk.id, { prompt: prompt.value });
+
+    item.appendChild(head);
+    item.appendChild(prompt);
+    wrap.appendChild(item);
+  }
+}
+
+function updateSkill(id, patch) {
+  const skills = (settings.skills || []).map((s) => (s.id === id ? { ...s, ...patch } : s));
+  saveSkills(skills);
+}
+
+async function deleteSkill(id) {
+  const skills = (settings.skills || []).filter((s) => s.id !== id);
+  // if we deleted the active skill, fall back to General
+  const patch = { skills };
+  if (settings.activeSkill === id) patch.activeSkill = '';
+  settings = await api.setSettings(patch);
+  refreshSkills();
+  toast('Skill deleted');
+}
+
+async function addSkill() {
+  const skills = [...(settings.skills || [])];
+  const id = makeSkillId('new skill');
+  skills.push({ id, name: 'New skill', prompt: '' });
+  await saveSkills(skills);
+  // focus the new skill's name field for immediate editing
+  const last = $('skillList').querySelector('.skill-item:last-child .skill-name');
+  if (last) { last.focus(); last.select(); }
+}
+
 // ---- UI events --------------------------------------------------------------
 function bindUI() {
   els.send.onclick = sendMessage;
@@ -97,6 +362,13 @@ function bindUI() {
   els.model.onchange = async () => {
     settings = await api.setSettings({ model: els.model.value });
     $('setModel').value = settings.model;
+  };
+
+  els.skill.onchange = async () => {
+    settings = await api.setSettings({ activeSkill: els.skill.value });
+    updateSkillUI();
+    const sk = activeSkillObj();
+    toast(sk ? 'Skill: ' + sk.name : 'Skill off — general mode');
   };
 
   els.think.onclick = async () => {
@@ -134,7 +406,7 @@ function sendMessage() {
   history.push({ role: 'user', content: text });
   addMessage('user', text);
 
-  const messages = [{ role: 'system', content: settings.systemPrompt }, ...history];
+  const messages = [{ role: 'system', content: composeSystemPrompt() }, ...history];
   startAssistant();
   setStreaming(true);
 
@@ -161,7 +433,7 @@ function bindStream() {
   api.onToken((t) => {
     if (!cur) return;
     cur.content += t;
-    cur.contentEl.textContent = cur.content;
+    cur.contentEl.innerHTML = renderMarkdown(cur.content);
     scroll();
   });
   api.onDone(() => {
@@ -169,7 +441,7 @@ function bindStream() {
     finishStream();
   });
   api.onError((m) => {
-    if (cur) cur.contentEl.textContent = (cur.content || '') + '\n— ' + m;
+    if (cur) cur.contentEl.innerHTML = renderMarkdown((cur.content || '') + '\n\n— ' + m);
     finishStream();
   });
   api.onWarn((m) => toast(m));
@@ -239,10 +511,13 @@ function renderEmpty() {
   if (els.messages.children.length) return;
   const e = document.createElement('div');
   e.className = 'empty';
+  const sk = activeSkillObj();
+  const line = sk
+    ? '<b>' + sk.name + '</b> skill · on-device with <b>' + (settings.model || 'your model') + '</b>.'
+    : 'Running fully on-device with <b>' + (settings.model || 'your model') + '</b>.';
   e.innerHTML =
     icon('i-orbit', 'mark') +
-    '<div class="title">Ask Orbit anything</div>' +
-    'Running fully on-device with <b>' + (settings.model || 'your model') + '</b>.';
+    '<div class="title">Ask Orbit anything</div>' + line;
   els.messages.appendChild(e);
 }
 function removeEmpty() {
@@ -271,6 +546,7 @@ function openSettings() {
   $('setAudioSource').value = settings.audioSource;
   $('setWhisper').value = settings.whisperModel;
   $('setAutoShow').checked = !!settings.autoShowOnSpeech;
+  renderSkillList();
   els.settings.classList.remove('hidden');
 }
 
@@ -291,6 +567,7 @@ function bindSettingsForm() {
   $('setAudioSource').onchange = (e) => patch({ audioSource: e.target.value });
   $('setWhisper').onchange = (e) => patch({ whisperModel: e.target.value });
   $('setAutoShow').onchange = (e) => patch({ autoShowOnSpeech: e.target.checked });
+  $('addSkillBtn').onclick = addSkill;
 
   // Hotkey capture
   for (const [id, key] of [['hkToggle', 'toggle'], ['hkFocus', 'focus'], ['hkClear', 'clear']]) {

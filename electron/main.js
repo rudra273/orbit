@@ -57,6 +57,19 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
+  // Open links (e.g. from rendered markdown) in the default browser, never
+  // inside the overlay — and block any in-app navigation away from the UI.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) {
+      e.preventDefault();
+      if (/^https?:/.test(url)) shell.openExternal(url);
+    }
+  });
+
   // Persist size/position.
   const saveBounds = () => {
     if (!win) return;

@@ -134,13 +134,18 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
   box-shadow: inset 0 0 0 1px rgba(138,164,255,0.35);
 }
 
-#modelSelect {
+#modelSelect, #skillSelect {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 8px; font-size: 11px; padding: 4px 9px;
-  min-width: 150px; max-width: 190px;
-  color: var(--text); transition: background .15s;
+  color: var(--text); transition: background .15s, border-color .15s, color .15s;
 }
-#modelSelect:hover { background: var(--panel-strong); }
+#modelSelect { min-width: 150px; max-width: 190px; }
+#modelSelect:hover, #skillSelect:hover { background: var(--panel-strong); }
+#skillSelect { min-width: 92px; max-width: 130px; }
+/* highlight when a real skill (not None) is active */
+#skillSelect.active {
+  background: var(--accent-dim); border-color: rgba(138,164,255,0.45); color: #cdd9ff;
+}
 
 .chip {
   background: var(--accent); color: #0b1020; border: none;
@@ -178,8 +183,36 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
   background: var(--panel); border: 1px solid var(--border-soft);
   padding: 9px 13px; border-radius: 14px; white-space: pre-wrap; user-select: text;
 }
-.msg.assistant .bubble code { background: rgba(0,0,0,0.32); padding: 1.5px 5px; border-radius: 5px; font-size: 12px; }
-.msg.assistant pre { background: rgba(0,0,0,0.36); padding: 10px; border-radius: 10px; overflow-x: auto; margin: 7px 0; }
+/* markdown inside assistant bubbles */
+.msg.assistant .bubble { white-space: normal; }
+.msg.assistant .bubble > :first-child { margin-top: 0; }
+.msg.assistant .bubble > :last-child { margin-bottom: 0; }
+.msg.assistant .bubble p { margin: 6px 0; }
+.msg.assistant .bubble strong { font-weight: 650; color: #fff; }
+.msg.assistant .bubble em { font-style: italic; }
+.msg.assistant .bubble a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.msg.assistant .bubble code {
+  background: rgba(0,0,0,0.32); padding: 1.5px 5px; border-radius: 5px;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12px;
+}
+.msg.assistant .bubble pre {
+  background: rgba(0,0,0,0.4); padding: 11px 12px; border-radius: 10px;
+  overflow-x: auto; margin: 8px 0; border: 1px solid var(--border-soft);
+}
+.msg.assistant .bubble pre code {
+  background: none; padding: 0; font-size: 12px; line-height: 1.5;
+  display: block; white-space: pre;
+}
+.msg.assistant .bubble ul, .msg.assistant .bubble ol { margin: 6px 0; padding-left: 20px; }
+.msg.assistant .bubble li { margin: 3px 0; }
+.msg.assistant .bubble li::marker { color: var(--accent); }
+.msg.assistant .bubble .md-h { font-size: 13.5px; font-weight: 650; margin: 10px 0 4px; color: #fff; }
+.msg.assistant .bubble h1.md-h { font-size: 15px; }
+.msg.assistant .bubble h2.md-h { font-size: 14px; }
+.msg.assistant .bubble blockquote {
+  margin: 6px 0; padding: 2px 0 2px 11px; border-left: 3px solid var(--accent-dim);
+  color: var(--muted);
+}
 
 /* typing caret while streaming */
 .bubble.streaming::after {
@@ -321,6 +354,50 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
 .settings-body details summary { font-size: 12px; color: var(--text); cursor: pointer; padding: 5px 0; font-weight: 500; }
 .hk { cursor: pointer; }
 .hk:focus { outline: none; border-color: var(--accent); }
+
+/* ---- Skills editor (in Settings) ---- */
+.skill-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.skill-item {
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--panel);
+}
+.skill-item-head {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+}
+.skill-item-head input.skill-name {
+  flex: 1; background: transparent; border: none; color: var(--text);
+  font-size: 12.5px; font-weight: 600; padding: 2px 0;
+}
+.skill-item-head input.skill-name:focus { outline: none; }
+.skill-active-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex-shrink: 0;
+}
+.skill-item.is-active .skill-active-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+.skill-del {
+  background: transparent; border: none; color: var(--faint);
+  width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+  transition: color .15s, background .15s;
+}
+.skill-del:hover { color: var(--danger); background: rgba(255,107,107,0.12); }
+.skill-del svg { width: 14px; height: 14px; }
+.skill-del.confirm {
+  width: auto; padding: 0 9px; font-size: 11px; font-weight: 600;
+  color: #fff; background: var(--danger); border-radius: 7px;
+}
+.skill-del.confirm:hover { filter: brightness(1.08); background: var(--danger); }
+.skill-item textarea.skill-prompt {
+  width: 100%; background: rgba(0,0,0,0.18); border: none; border-top: 1px solid var(--border-soft);
+  color: var(--muted); font-size: 11.5px; font-family: inherit; line-height: 1.45;
+  padding: 8px 10px; resize: vertical; min-height: 56px; user-select: text;
+}
+.skill-item textarea.skill-prompt:focus { outline: none; color: var(--text); }
+.skill-add {
+  align-self: flex-start; background: var(--accent-dim); color: #cdd9ff;
+  border: 1px solid rgba(138,164,255,0.35); border-radius: 9px;
+  font-size: 12px; padding: 6px 12px; transition: filter .15s, transform .12s;
+}
+.skill-add:hover { filter: brightness(1.12); }
+.skill-add:active { transform: scale(0.96); }
 
 .muted { color: var(--muted); }
 .small { font-size: 10.5px; }
