@@ -20,9 +20,15 @@ rm -rf "$APP"
 cp -R "$SRC" "$APP"
 
 # App code into Contents/Resources/app (Electron auto-loads this over default_app).
+# We SYMLINK to the repo rather than copy: codesign seals the symlinks (not their
+# targets), so editing the JS later doesn't change the bundle's cdhash — macOS keeps
+# Screen Recording / Mic permission across code changes. Just relaunch, no re-grant.
 APPDIR="$APP/Contents/Resources/app"
 mkdir -p "$APPDIR"
-cp -R "$ROOT/electron" "$ROOT/renderer" "$ROOT/sidecar" "$ROOT/package.json" "$APPDIR/"
+ln -sfn "$ROOT/electron" "$APPDIR/electron"
+ln -sfn "$ROOT/renderer" "$APPDIR/renderer"
+ln -sfn "$ROOT/sidecar" "$APPDIR/sidecar"
+ln -sfn "$ROOT/package.json" "$APPDIR/package.json"
 
 # Brand the bundle: name + identifier + mic usage string.
 PLIST="$APP/Contents/Info.plist"

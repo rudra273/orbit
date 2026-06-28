@@ -14,6 +14,7 @@ const els = {
   stop: $('stopBtn'),
   model: $('modelSelect'),
   think: $('thinkBtn'),
+  mic: $('micBtn'),
   listen: $('listenBtn'),
   transcript: $('transcript'),
   transcriptBody: $('transcriptBody'),
@@ -68,6 +69,7 @@ async function refreshModels() {
 function bindUI() {
   els.send.onclick = sendMessage;
   els.stop.onclick = () => api.stopChat();
+  els.mic.onclick = toggleDictation;
   els.hide.onclick = () => api.hide();
 
   els.input.addEventListener('keydown', (e) => {
@@ -502,6 +504,126 @@ function updateListenUI() {
   els.listen.classList.toggle('active', listening);
   els.listen.textContent = listening ? '🎙️ Listening' : '🎙️ Listen';
   if (!listening && !transcriptText) els.transcript.classList.add('hidden');
+}
+
+// ---- Voice dictation (mic -> chat input) ------------------------------------
+const DICT_SILENCE_MS = 1200; // auto-stop after this much trailing silence
+let dictating = false;
+let dictCtx = null;
+let dictProc = null;
+let dictSrc = null;
+let dictStream = null;
+let dictBuf = [];
+let dictSpoke = false;
+let dictSilence = 0;
+
+async function toggleDictation() {
+  if (dictating) return stopDictation(true);
+  return startDictation();
+}
+
+async function startDictation() {
+  try {
+    els.mic.classList.add('active');
+    els.mic.textContent = '⏺';
+    await api.audioStart(); // ensure whisper sidecar is up
+
+    dictStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    dictCtx = new AudioContext({ sampleRate: SR });
+    dictProc = dictCtx.createScriptProcessor(4096, 1, 1);
+    dictSrc = dictCtx.createMediaStreamSource(dictStream);
+    dictSrc.connect(dictProc);
+    const mute = dictCtx.createGain();
+    mute.gain.value = 0;
+    dictProc.connect(mute);
+    mute.connect(dictCtx.destination);
+
+    dictBuf = [];
+    dictSpoke = false;
+    dictSilence = 0;
+    dictProc.onaudioprocess = onDictAudio;
+    dictating = true;
+    toast('🎤 Speak now — pause when done');
+  } catch (e) {
+    await teardownDictation();
+    els.mic.classList.remove('active');
+    els.mic.textContent = '🎤';
+    const perm = await api.permStatus();
+    if (perm.mic === 'denied') {
+      await api.openPerm('mic');
+      toast('Enable Microphone for Orbit in System Settings, then try again.');
+    } else {
+      toast('Mic error: ' + (e.message || e));
+    }
+  }
+}
+
+function onDictAudio(e) {
+  const input = e.inputBuffer.getChannelData(0);
+  let sum = 0;
+  for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+  const rms = Math.sqrt(sum / input.length);
+  const frameMs = (input.length / SR) * 1000;
+  dictBuf.push(new Float32Array(input));
+  if (rms > THRESH) {
+    dictSpoke = true;
+    dictSilence = 0;
+  } else if (dictSpoke) {
+    dictSilence += frameMs;
+    if (dictSilence > DICT_SILENCE_MS) stopDictation(true);
+  }
+}
+
+async function teardownDictation() {
+  if (dictProc) {
+    dictProc.onaudioprocess = null;
+    dictProc.disconnect();
+    dictProc = null;
+  }
+  if (dictSrc) {
+    dictSrc.disconnect();
+    dictSrc = null;
+  }
+  if (dictStream) {
+    dictStream.getTracks().forEach((t) => t.stop());
+    dictStream = null;
+  }
+  if (dictCtx) {
+    try { await dictCtx.close(); } catch {}
+    dictCtx = null;
+  }
+}
+
+async function stopDictation(transcribe) {
+  if (!dictating) return;
+  dictating = false;
+  const buf = dictBuf;
+  const spoke = dictSpoke;
+  dictBuf = [];
+  await teardownDictation();
+  els.mic.classList.remove('active');
+
+  const total = buf.reduce((a, b) => a + b.length, 0);
+  if (!transcribe || !spoke || total < SR * 0.3) {
+    els.mic.textContent = '🎤';
+    return;
+  }
+  const merged = new Float32Array(total);
+  let o = 0;
+  for (const c of buf) {
+    merged.set(c, o);
+    o += c.length;
+  }
+  els.mic.textContent = '⏳';
+  const r = await api.transcribe(merged.buffer);
+  els.mic.textContent = '🎤';
+  if (r && r.text) {
+    els.input.value = (els.input.value ? els.input.value.trim() + ' ' : '') + r.text;
+    autoGrow();
+    els.input.focus();
+  } else {
+    toast("Didn't catch that — try again");
+  }
 }
 
 // ---- Toast ------------------------------------------------------------------
