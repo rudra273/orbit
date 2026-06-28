@@ -363,6 +363,34 @@ ipcMain.handle('win:setIgnoreMouse', (evt, ignore) =>
   win && win.setIgnoreMouseEvents(!!ignore, { forward: true })
 );
 
+// Yellow light → minimize to a slim composer-only strip; click again to restore.
+let expandedHeight = null;
+ipcMain.handle('win:compact', () => {
+  if (!win) return { compact: false };
+  const b = win.getBounds();
+  const COMPACT_H = 132;
+  const isCompact = b.height <= COMPACT_H + 4;
+  if (isCompact) {
+    win.setBounds({ ...b, height: expandedHeight || 560 }, true);
+    return { compact: false };
+  }
+  expandedHeight = b.height;
+  win.setBounds({ ...b, height: COMPACT_H }, true);
+  return { compact: true };
+});
+
+// Green light → widen a step (not fullscreen); cycles through a few widths and
+// wraps back to the narrow default. Keeps the window on-screen.
+const WIDTHS = [440, 560, 680, 800];
+ipcMain.handle('win:widen', () => {
+  if (!win) return { width: 440 };
+  const b = win.getBounds();
+  // pick the next width larger than current, else wrap to the smallest
+  const next = WIDTHS.find((w) => w > b.width + 8) ?? WIDTHS[0];
+  win.setBounds({ ...b, width: next }, true);
+  return { width: next };
+});
+
 app.whenReady().then(() => {
   // Route getDisplayMedia() requests to capture the screen's system audio
   // (ScreenCaptureKit loopback) without showing the macOS picker.

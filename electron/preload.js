@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('orbit', {
   // window
   hide: () => ipcRenderer.invoke('win:hide'),
   show: () => ipcRenderer.invoke('win:show'),
+  compact: () => ipcRenderer.invoke('win:compact'),
+  widen: () => ipcRenderer.invoke('win:widen'),
   setIgnoreMouse: (ignore) => ipcRenderer.invoke('win:setIgnoreMouse', ignore),
 
   // main -> renderer triggers

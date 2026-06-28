@@ -7,19 +7,75 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="theme-glass">
+    <!-- ===== SVG icon sprite (defined once, referenced via <use>) ===== -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <!-- Orbit logo: a core with an inclined orbital ring + satellite -->
+        <symbol id="i-orbit" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3.4" fill="currentColor"/>
+          <ellipse cx="12" cy="12" rx="9.2" ry="4.3" fill="none" stroke="currentColor" stroke-width="1.5" transform="rotate(-28 12 12)"/>
+          <circle cx="19.4" cy="7.7" r="1.7" fill="currentColor"/>
+        </symbol>
+        <symbol id="i-send" viewBox="0 0 24 24">
+          <path d="M4 11.5 19 4l-4.2 15-3.3-6.2L4 11.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="i-mic" viewBox="0 0 24 24">
+          <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="i-stop" viewBox="0 0 24 24">
+          <rect x="6.5" y="6.5" width="11" height="11" rx="2.5" fill="currentColor"/>
+        </symbol>
+        <symbol id="i-listen" viewBox="0 0 24 24">
+          <path d="M4 14v-4a8 8 0 0 1 16 0v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <rect x="3" y="13" width="4" height="6" rx="2" fill="currentColor"/>
+          <rect x="17" y="13" width="4" height="6" rx="2" fill="currentColor"/>
+        </symbol>
+        <!-- Settings: horizontal sliders (unambiguous vs. a sun/brightness gear) -->
+        <symbol id="i-settings" viewBox="0 0 24 24">
+          <path d="M4 7h10M18 7h2M4 17h2M10 17h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="16" cy="7" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+          <circle cx="8" cy="17" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 24 24">
+          <path d="M6 6l12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <!-- Reasoning / "thinking": AI sparkle (4-point star + small accent star) -->
+        <symbol id="i-spark" viewBox="0 0 24 24">
+          <path d="M10 2.5c.8 4.4 2.4 6 6.8 6.8-4.4.8-6 2.4-6.8 6.8-.8-4.4-2.4-6-6.8-6.8 4.4-.8 6-2.4 6.8-6.8Z" fill="currentColor"/>
+          <path d="M18 13.5c.4 2 1.1 2.7 3.1 3.1-2 .4-2.7 1.1-3.1 3.1-.4-2-1.1-2.7-3.1-3.1 2-.4 2.7-1.1 3.1-3.1Z" fill="currentColor" opacity=".65"/>
+        </symbol>
+      </defs>
+    </svg>
+
     <div id="app">
       <!-- Title / drag bar -->
       <header id="titlebar">
-        <div class="drag">
-          <span class="logo">🛰️</span>
+        <!-- macOS traffic-light window controls (left) -->
+        <div class="traffic no-drag">
+          <button id="tlClose" class="light close" title="Hide Orbit"><span class="glyph">×</span></button>
+          <button id="tlMin" class="light min" title="Minimize to strip"><span class="glyph">−</span></button>
+          <button id="tlZoom" class="light zoom" title="Widen window"><span class="glyph">+</span></button>
+        </div>
+
+        <div class="brand drag">
+          <svg class="logo" viewBox="0 0 24 24"><use href="#i-orbit"/></svg>
           <span class="name">Orbit</span>
         </div>
+
+        <div class="titlebar-spacer"></div>
+
         <div class="bar-actions no-drag">
           <select id="modelSelect" title="Active model"></select>
-          <button id="listenBtn" class="pill" title="Listen to call / system audio">🎙️ Listen</button>
-          <button id="thinkBtn" class="pill" title="Toggle thinking mode">🧠 Think</button>
-          <button id="settingsBtn" class="icon" title="Settings">⚙️</button>
-          <button id="hideBtn" class="icon" title="Hide (hotkey to bring back)">✕</button>
+          <button id="listenBtn" class="iconbtn" title="Listen to call / system audio">
+            <svg viewBox="0 0 24 24"><use href="#i-listen"/></svg>
+          </button>
+          <button id="thinkBtn" class="iconbtn" title="Toggle thinking mode">
+            <svg viewBox="0 0 24 24"><use href="#i-spark"/></svg>
+          </button>
+          <button id="settingsBtn" class="iconbtn" title="Settings">
+            <svg viewBox="0 0 24 24"><use href="#i-settings"/></svg>
+          </button>
         </div>
       </header>
 
@@ -29,18 +85,26 @@
       <!-- Live audio transcript (Phase 4) -->
       <section id="transcript" class="hidden">
         <div class="transcript-head">
-          <span>🎙️ Live transcript</span>
-          <button id="answerBtn" class="pill small">Answer this</button>
+          <span class="th-label"><svg class="th-ic" viewBox="0 0 24 24"><use href="#i-listen"/></svg> Live transcript</span>
+          <button id="answerBtn" class="chip">Answer this</button>
         </div>
         <div id="transcriptBody"></div>
       </section>
 
       <!-- Composer -->
       <footer id="composer">
-        <textarea id="input" rows="1" placeholder="Ask Orbit…  (Enter to send, Shift+Enter for newline)"></textarea>
-        <button id="micBtn" class="send mic" title="Speak to Orbit (voice input)">🎤</button>
-        <button id="sendBtn" class="send" title="Send">➤</button>
-        <button id="stopBtn" class="send hidden" title="Stop">■</button>
+        <div class="input-wrap">
+          <textarea id="input" rows="1" placeholder="Ask Orbit…"></textarea>
+          <button id="micBtn" class="composer-btn mic" title="Speak to Orbit (voice input)">
+            <svg viewBox="0 0 24 24"><use href="#i-mic"/></svg>
+          </button>
+        </div>
+        <button id="sendBtn" class="composer-btn send" title="Send">
+          <svg viewBox="0 0 24 24"><use href="#i-send"/></svg>
+        </button>
+        <button id="stopBtn" class="composer-btn stop hidden" title="Stop">
+          <svg viewBox="0 0 24 24"><use href="#i-stop"/></svg>
+        </button>
       </footer>
     </div>
 
@@ -48,8 +112,10 @@
     <div id="settings" class="hidden">
       <div class="settings-card">
         <div class="settings-head">
-          <h2>Settings</h2>
-          <button id="settingsClose" class="icon">✕</button>
+          <h2><svg class="head-ic" viewBox="0 0 24 24"><use href="#i-settings"/></svg> Settings</h2>
+          <button id="settingsClose" class="iconbtn" title="Close">
+            <svg viewBox="0 0 24 24"><use href="#i-close"/></svg>
+          </button>
         </div>
         <div class="settings-body">
           <label>Model
@@ -92,7 +158,7 @@
 
           <hr />
           <details>
-            <summary>Audio copilot (Phase 4)</summary>
+            <summary>Audio copilot</summary>
             <label>Source
               <select id="setAudioSource">
                 <option value="system">System audio (the call)</option>
@@ -111,7 +177,6 @@
             <label class="row">Auto-show when speech detected
               <input type="checkbox" id="setAutoShow" />
             </label>
-            <p class="muted small">Transcription sidecar not wired yet — settings are saved for when it lands.</p>
           </details>
         </div>
       </div>

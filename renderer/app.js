@@ -20,11 +20,18 @@ const els = {
   transcriptBody: $('transcriptBody'),
   answer: $('answerBtn'),
   settingsBtn: $('settingsBtn'),
-  hide: $('hideBtn'),
   settings: $('settings'),
   settingsClose: $('settingsClose'),
-  toast: $('toast')
+  toast: $('toast'),
+  tlClose: $('tlClose'),
+  tlMin: $('tlMin'),
+  tlZoom: $('tlZoom')
 };
+
+// small helper: build an <svg><use href="#id"/></svg> string
+function icon(id, cls) {
+  return `<svg class="${cls || ''}" viewBox="0 0 24 24"><use href="#${id}"/></svg>`;
+}
 
 // ---- Boot -------------------------------------------------------------------
 (async function init() {
@@ -41,7 +48,7 @@ const els = {
 function updateThinkBtn() {
   const on = !!settings.thinking;
   els.think.classList.toggle('active', on);
-  els.think.textContent = on ? '🧠 Think: ON' : '🧠 Think: OFF';
+  els.think.title = on ? 'Thinking mode: ON' : 'Thinking mode: OFF';
 }
 
 function applyTheme() {
@@ -62,7 +69,7 @@ async function refreshModels() {
     }
     sel.value = settings.model;
   }
-  if (!r.ok) toast('⚠️ Ollama not reachable — is it running?');
+  if (!r.ok) toast('Ollama not reachable — is it running?');
 }
 
 // ---- UI events --------------------------------------------------------------
@@ -70,7 +77,14 @@ function bindUI() {
   els.send.onclick = sendMessage;
   els.stop.onclick = () => api.stopChat();
   els.mic.onclick = toggleDictation;
-  els.hide.onclick = () => api.hide();
+
+  // macOS-style window controls (top-left) — each does something distinct
+  els.tlClose.onclick = () => api.hide();                  // red: hide overlay
+  els.tlMin.onclick = async () => {                        // yellow: minimize to strip
+    const r = await api.compact();
+    document.body.classList.toggle('compact', !!(r && r.compact));
+  };
+  els.tlZoom.onclick = () => api.widen();                  // green: widen a step
 
   els.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -88,7 +102,7 @@ function bindUI() {
   els.think.onclick = async () => {
     settings = await api.setSettings({ thinking: !settings.thinking });
     updateThinkBtn();
-    toast(settings.thinking ? '🧠 Thinking ON' : '🧠 Thinking OFF');
+    toast(settings.thinking ? 'Thinking mode on' : 'Thinking mode off');
   };
 
   els.listen.onclick = toggleListen;
@@ -132,7 +146,7 @@ function sendMessage() {
       temperature: settings.temperature
     })
     .then((res) => {
-      if (res && res.ok === false) toast('⚠️ ' + (res.error || 'request failed'));
+      if (res && res.ok === false) toast(res.error || 'Request failed');
     });
 }
 
@@ -155,7 +169,7 @@ function bindStream() {
     finishStream();
   });
   api.onError((m) => {
-    if (cur) cur.contentEl.textContent = (cur.content || '') + '\n⚠️ ' + m;
+    if (cur) cur.contentEl.textContent = (cur.content || '') + '\n— ' + m;
     finishStream();
   });
   api.onWarn((m) => toast(m));
@@ -168,6 +182,7 @@ function setStreaming(on) {
 }
 function finishStream() {
   setStreaming(false);
+  if (cur && cur.contentEl) cur.contentEl.classList.remove('streaming');
   cur = null;
 }
 
@@ -179,13 +194,13 @@ function startAssistant() {
 
   const think = document.createElement('details');
   think.className = 'think hidden';
-  think.innerHTML = '<summary>🧠 Thinking…</summary>';
+  think.innerHTML = '<summary>' + icon('i-spark', 'tk-ic') + 'Thinking…</summary>';
   const thinkBody = document.createElement('div');
   thinkBody.className = 'think-body';
   think.appendChild(thinkBody);
 
   const bubble = document.createElement('div');
-  bubble.className = 'bubble';
+  bubble.className = 'bubble streaming';
   bubble.textContent = '';
 
   wrap.appendChild(think);
@@ -224,8 +239,10 @@ function renderEmpty() {
   if (els.messages.children.length) return;
   const e = document.createElement('div');
   e.className = 'empty';
-  e.innerHTML = '<div class="big">🛰️</div>Ask Orbit anything.<br/>Running locally on <b>' +
-    (settings.model || 'your model') + '</b>.';
+  e.innerHTML =
+    icon('i-orbit', 'mark') +
+    '<div class="title">Ask Orbit anything</div>' +
+    'Running fully on-device with <b>' + (settings.model || 'your model') + '</b>.';
   els.messages.appendChild(e);
 }
 function removeEmpty() {
@@ -334,7 +351,8 @@ function withTimeout(promise, ms, msg) {
 
 async function startListen() {
   try {
-    els.listen.textContent = '🎙️ Starting…';
+    els.listen.classList.add('active');
+    els.listen.title = 'Starting…';
     const wanted = settings.audioSource || 'system';
 
     await api.audioStart(); // boots the whisper sidecar (may download model first run)
@@ -359,7 +377,7 @@ async function startListen() {
     } catch (capErr) {
       await cleanupAudio();
       await api.audioStop();
-      els.listen.textContent = '🎙️ Listen';
+      els.listen.classList.remove('active');
       const perm = await api.permStatus();
       if (wanted !== 'mic' && perm.screen !== 'granted') {
         await api.openPerm('screen');
@@ -393,7 +411,7 @@ async function startListen() {
     listening = true;
     updateListenUI();
     els.transcript.classList.remove('hidden');
-    toast('🎙️ Listening — say something');
+    toast('Listening — say something');
   } catch (e) {
     toast('Audio error: ' + (e.message || e));
     await cleanupAudio();
@@ -488,21 +506,21 @@ function answerFromTranscript() {
 }
 
 function onAudioStatus(status) {
-  if (status === 'loading') els.listen.textContent = '🎙️ Loading…';
+  if (status === 'loading') els.listen.title = 'Loading transcriber…';
   else if (status === 'ready') updateListenUI();
   else if (status === 'crashed') {
-    toast('⚠️ Transcriber crashed (is mlx-whisper installed? run setup)');
+    toast('Transcriber crashed (is mlx-whisper installed? run setup)');
     listening = false;
     cleanupAudio();
     updateListenUI();
   } else if (typeof status === 'string' && status.startsWith('error')) {
-    toast('⚠️ ' + status);
+    toast(String(status));
   }
 }
 
 function updateListenUI() {
   els.listen.classList.toggle('active', listening);
-  els.listen.textContent = listening ? '🎙️ Listening' : '🎙️ Listen';
+  els.listen.title = listening ? 'Listening to call audio — click to stop' : 'Listen to call / system audio';
   if (!listening && !transcriptText) els.transcript.classList.add('hidden');
 }
 
@@ -525,7 +543,7 @@ async function toggleDictation() {
 async function startDictation() {
   try {
     els.mic.classList.add('active');
-    els.mic.textContent = '⏺';
+    els.mic.classList.remove('busy');
     await api.audioStart(); // ensure whisper sidecar is up
 
     dictStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -543,11 +561,10 @@ async function startDictation() {
     dictSilence = 0;
     dictProc.onaudioprocess = onDictAudio;
     dictating = true;
-    toast('🎤 Speak now — pause when done');
+    toast('Speak now — pause when done');
   } catch (e) {
     await teardownDictation();
-    els.mic.classList.remove('active');
-    els.mic.textContent = '🎤';
+    els.mic.classList.remove('active', 'busy');
     const perm = await api.permStatus();
     if (perm.mic === 'denied') {
       await api.openPerm('mic');
@@ -605,7 +622,7 @@ async function stopDictation(transcribe) {
 
   const total = buf.reduce((a, b) => a + b.length, 0);
   if (!transcribe || !spoke || total < SR * 0.3) {
-    els.mic.textContent = '🎤';
+    els.mic.classList.remove('busy');
     return;
   }
   const merged = new Float32Array(total);
@@ -614,9 +631,9 @@ async function stopDictation(transcribe) {
     merged.set(c, o);
     o += c.length;
   }
-  els.mic.textContent = '⏳';
+  els.mic.classList.add('busy');
   const r = await api.transcribe(merged.buffer);
-  els.mic.textContent = '🎤';
+  els.mic.classList.remove('busy');
   if (r && r.text) {
     els.input.value = (els.input.value ? els.input.value.trim() + ' ' : '') + r.text;
     autoGrow();
