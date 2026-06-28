@@ -5,6 +5,7 @@ let settings = {};
 let history = []; // [{role, content}]
 let streaming = false;
 let cur = null; // { contentEl, thinkEl, thinkBody, content, thinking }
+let currentChatId = null; // id of the chat being viewed (null = fresh, unsaved)
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -26,7 +27,12 @@ const els = {
   toast: $('toast'),
   tlClose: $('tlClose'),
   tlMin: $('tlMin'),
-  tlZoom: $('tlZoom')
+  tlZoom: $('tlZoom'),
+  sidebarBtn: $('sidebarBtn'),
+  sidebar: $('sidebar'),
+  sidebarScrim: $('sidebarScrim'),
+  newChatBtn: $('newChatBtn'),
+  chatList: $('chatList')
 };
 
 // small helper: build an <svg><use href="#id"/></svg> string
@@ -351,6 +357,11 @@ function bindUI() {
   };
   els.tlZoom.onclick = () => api.widen();                  // green: widen a step
 
+  // Sidebar / chat history
+  els.sidebarBtn.onclick = toggleSidebar;
+  els.sidebarScrim.onclick = closeSidebar;
+  els.newChatBtn.onclick = () => { newChat(); closeSidebar(); };
+
   els.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -439,10 +450,15 @@ function bindStream() {
   api.onDone(() => {
     if (cur) history.push({ role: 'assistant', content: cur.content });
     finishStream();
+    persistCurrentChat();
   });
   api.onError((m) => {
-    if (cur) cur.contentEl.innerHTML = renderMarkdown((cur.content || '') + '\n\n— ' + m);
+    if (cur) {
+      cur.contentEl.innerHTML = renderMarkdown((cur.content || '') + '\n\n— ' + m);
+      if (cur.content) history.push({ role: 'assistant', content: cur.content });
+    }
     finishStream();
+    persistCurrentChat();
   });
   api.onWarn((m) => toast(m));
 }
@@ -503,9 +519,7 @@ function addMessage(role, text) {
 }
 
 function clearChat() {
-  history = [];
-  els.messages.innerHTML = '';
-  renderEmpty();
+  newChat();
 }
 function renderEmpty() {
   if (els.messages.children.length) return;
@@ -526,6 +540,148 @@ function removeEmpty() {
 }
 function scroll() {
   els.messages.scrollTop = els.messages.scrollHeight;
+}
+
+// ---- Sidebar / chat history -------------------------------------------------
+function toggleSidebar() {
+  if (els.sidebar.classList.contains('closed')) openSidebar();
+  else closeSidebar();
+}
+function openSidebar() {
+  els.sidebar.classList.remove('closed');
+  els.sidebarScrim.classList.remove('hidden');
+  renderChatList();
+}
+function closeSidebar() {
+  els.sidebar.classList.add('closed');
+  els.sidebarScrim.classList.add('hidden');
+}
+
+// Derive a short title from the first user message.
+function titleFrom(msgs) {
+  const first = (msgs || []).find((m) => m.role === 'user');
+  const t = (first ? first.content : 'New chat').trim().replace(/\s+/g, ' ');
+  return t.length > 48 ? t.slice(0, 47) + '…' : t || 'New chat';
+}
+
+// Persist the in-memory `history` as a chat. Creates an id on first save.
+async function persistCurrentChat() {
+  if (!history.length) return; // nothing worth saving
+  if (!currentChatId) currentChatId = 'c' + Date.now() + Math.floor(Math.random() * 1000);
+  const existing = await api.getChat(currentChatId);
+  const chat = {
+    id: currentChatId,
+    title: existing && existing.titleEdited ? existing.title : titleFrom(history),
+    titleEdited: existing ? existing.titleEdited : false,
+    messages: history,
+    createdAt: existing ? existing.createdAt : Date.now(),
+    updatedAt: Date.now()
+  };
+  await api.saveChat(chat);
+}
+
+// Start a fresh, unsaved chat.
+function newChat() {
+  history = [];
+  currentChatId = null;
+  els.messages.innerHTML = '';
+  renderEmpty();
+  els.input.focus();
+}
+
+// Load a saved chat into the view.
+async function openChat(id) {
+  const chat = await api.getChat(id);
+  if (!chat) return;
+  currentChatId = id;
+  history = chat.messages.slice();
+  els.messages.innerHTML = '';
+  for (const m of history) {
+    if (m.role === 'user') addMessage('user', m.content);
+    else renderAssistantStatic(m.content);
+  }
+  if (!history.length) renderEmpty();
+  closeSidebar();
+  scroll();
+}
+
+// Render a finished assistant message (markdown, no streaming caret).
+function renderAssistantStatic(content) {
+  removeEmpty();
+  const wrap = document.createElement('div');
+  wrap.className = 'msg assistant';
+  wrap.innerHTML = '<div class="role">orbit</div>';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = renderMarkdown(content);
+  wrap.appendChild(bubble);
+  els.messages.appendChild(wrap);
+}
+
+async function renderChatList() {
+  const chats = await api.listChats();
+  els.chatList.innerHTML = '';
+  if (!chats.length) {
+    const e = document.createElement('div');
+    e.className = 'empty-hist';
+    e.textContent = 'No saved chats yet.';
+    els.chatList.appendChild(e);
+    return;
+  }
+  for (const c of chats) {
+    const row = document.createElement('div');
+    row.className = 'chat-row' + (c.id === currentChatId ? ' active' : '');
+    row.onclick = (e) => { if (e.target.closest('.chat-del')) return; openChat(c.id); };
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+    const name = document.createElement('div');
+    name.className = 'chat-name';
+    name.textContent = c.title || 'Untitled';
+    const sub = document.createElement('div');
+    sub.className = 'chat-sub';
+    sub.textContent = relativeTime(c.updatedAt) + ' · ' + c.count + ' msg';
+    meta.appendChild(name);
+    meta.appendChild(sub);
+
+    const del = document.createElement('button');
+    del.className = 'chat-del';
+    del.title = 'Delete chat';
+    del.innerHTML = icon('i-trash');
+    let t = null;
+    const reset = () => { del.classList.remove('confirm'); del.innerHTML = icon('i-trash'); clearTimeout(t); t = null; };
+    del.onclick = (e) => {
+      e.stopPropagation();
+      if (del.classList.contains('confirm')) { reset(); removeChat(c.id); return; }
+      del.classList.add('confirm');
+      del.textContent = 'Delete?';
+      t = setTimeout(reset, 3000);
+    };
+
+    row.appendChild(meta);
+    row.appendChild(del);
+    els.chatList.appendChild(row);
+  }
+}
+
+async function removeChat(id) {
+  await api.deleteChat(id);
+  if (id === currentChatId) newChat();
+  renderChatList();
+  toast('Chat deleted');
+}
+
+function relativeTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  const d = Math.floor(h / 24);
+  if (d < 7) return d + 'd ago';
+  return new Date(ts).toLocaleDateString();
 }
 
 // ---- Settings form ----------------------------------------------------------

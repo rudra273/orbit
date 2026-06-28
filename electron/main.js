@@ -371,6 +371,12 @@ ipcMain.handle('settings:set', (evt, patch) => {
   return next;
 });
 
+// ---- Chat history IPC ----
+ipcMain.handle('chats:list', () => store.listChats());
+ipcMain.handle('chats:get', (evt, id) => store.getChat(id));
+ipcMain.handle('chats:save', (evt, chat) => store.saveChat(chat));
+ipcMain.handle('chats:delete', (evt, id) => store.deleteChat(id));
+
 ipcMain.handle('win:hide', () => win && win.hide());
 ipcMain.handle('win:setIgnoreMouse', (evt, ignore) =>
   win && win.setIgnoreMouseEvents(!!ignore, { forward: true })

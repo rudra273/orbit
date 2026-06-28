@@ -97,6 +97,29 @@ function save() {
   }
 }
 
+// ---- Chats: a separate JSON file so chat I/O never rewrites settings ----
+let chatsCache = null;
+function chatsFile() {
+  return path.join(app.getPath('userData'), 'orbit-chats.json');
+}
+function loadChats() {
+  if (chatsCache) return chatsCache;
+  try {
+    chatsCache = JSON.parse(fs.readFileSync(chatsFile(), 'utf8'));
+    if (!Array.isArray(chatsCache)) chatsCache = [];
+  } catch {
+    chatsCache = [];
+  }
+  return chatsCache;
+}
+function saveChats() {
+  try {
+    fs.writeFileSync(chatsFile(), JSON.stringify(chatsCache, null, 2));
+  } catch (e) {
+    console.error('chats save failed', e);
+  }
+}
+
 module.exports = {
   DEFAULTS,
   getAll() {
@@ -110,5 +133,29 @@ module.exports = {
     data = { ...data, ...patch };
     save();
     return { ...data };
+  },
+
+  // chats — newest first; each: { id, title, messages, createdAt, updatedAt }
+  listChats() {
+    return loadChats()
+      .map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, count: (c.messages || []).length }))
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  },
+  getChat(id) {
+    return loadChats().find((c) => c.id === id) || null;
+  },
+  saveChat(chat) {
+    loadChats();
+    const i = chatsCache.findIndex((c) => c.id === chat.id);
+    if (i >= 0) chatsCache[i] = chat;
+    else chatsCache.push(chat);
+    saveChats();
+    return chat;
+  },
+  deleteChat(id) {
+    loadChats();
+    chatsCache = chatsCache.filter((c) => c.id !== id);
+    saveChats();
+    return true;
   }
 };

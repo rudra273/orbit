@@ -43,6 +43,13 @@
         <symbol id="i-trash" viewBox="0 0 24 24">
           <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
+        <symbol id="i-sidebar" viewBox="0 0 24 24">
+          <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+          <path d="M9 4.5v15" fill="none" stroke="currentColor" stroke-width="1.7"/>
+        </symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+        </symbol>
         <!-- Reasoning / "thinking": AI sparkle (4-point star + small accent star) -->
         <symbol id="i-spark" viewBox="0 0 24 24">
           <path d="M10 2.5c.8 4.4 2.4 6 6.8 6.8-4.4.8-6 2.4-6.8 6.8-.8-4.4-2.4-6-6.8-6.8 4.4-.8 6-2.4 6.8-6.8Z" fill="currentColor"/>
@@ -60,6 +67,10 @@
           <button id="tlMin" class="light min" title="Minimize to strip"><span class="glyph">−</span></button>
           <button id="tlZoom" class="light zoom" title="Widen window"><span class="glyph">+</span></button>
         </div>
+
+        <button id="sidebarBtn" class="iconbtn no-drag" title="Chat history">
+          <svg viewBox="0 0 24 24"><use href="#i-sidebar"/></svg>
+        </button>
 
         <div class="brand drag">
           <svg class="logo" viewBox="0 0 24 24"><use href="#i-orbit"/></svg>
@@ -83,8 +94,20 @@
         </div>
       </header>
 
-      <!-- Chat transcript -->
-      <main id="messages"></main>
+      <!-- Chat-area wrapper holds the sliding history sidebar + the messages -->
+      <div id="chatarea">
+        <aside id="sidebar" class="closed">
+          <div class="sidebar-head">
+            <span class="sidebar-title">History</span>
+            <button id="newChatBtn" class="chip"><svg class="chip-ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg> New chat</button>
+          </div>
+          <div id="chatList" class="chat-list"></div>
+        </aside>
+        <div id="sidebarScrim" class="hidden"></div>
+
+        <!-- Chat transcript -->
+        <main id="messages"></main>
+      </div>
 
       <!-- Live audio transcript (Phase 4) -->
       <section id="transcript" class="hidden">

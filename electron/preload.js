@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('orbit', {
   // models
   listModels: () => ipcRenderer.invoke('models:list'),
 
+  // chat history
+  listChats: () => ipcRenderer.invoke('chats:list'),
+  getChat: (id) => ipcRenderer.invoke('chats:get', id),
+  saveChat: (chat) => ipcRenderer.invoke('chats:save', chat),
+  deleteChat: (id) => ipcRenderer.invoke('chats:delete', id),
+
   // chat (streamed via events)
   sendChat: (payload) => ipcRenderer.invoke('chat:send', payload),
   stopChat: () => ipcRenderer.invoke('chat:stop'),
