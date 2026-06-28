@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orbit</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="theme-glass">
+    <div id="app">
+      <!-- Title / drag bar -->
+      <header id="titlebar">
+        <div class="drag">
+          <span class="logo">🛰️</span>
+          <span class="name">Orbit</span>
+        </div>
+        <div class="bar-actions no-drag">
+          <select id="modelSelect" title="Active model"></select>
+          <button id="listenBtn" class="pill" title="Listen to call / system audio">🎙️ Listen</button>
+          <button id="thinkBtn" class="pill" title="Toggle thinking mode">🧠 Think</button>
+          <button id="settingsBtn" class="icon" title="Settings">⚙️</button>
+          <button id="hideBtn" class="icon" title="Hide (hotkey to bring back)">✕</button>
+        </div>
+      </header>
+
+      <!-- Chat transcript -->
+      <main id="messages"></main>
+
+      <!-- Live audio transcript (Phase 4) -->
+      <section id="transcript" class="hidden">
+        <div class="transcript-head">
+          <span>🎙️ Live transcript</span>
+          <button id="answerBtn" class="pill small">Answer this</button>
+        </div>
+        <div id="transcriptBody"></div>
+      </section>
+
+      <!-- Composer -->
+      <footer id="composer">
+        <textarea id="input" rows="1" placeholder="Ask Orbit…  (Enter to send, Shift+Enter for newline)"></textarea>
+        <button id="sendBtn" class="send" title="Send">➤</button>
+        <button id="stopBtn" class="send hidden" title="Stop">■</button>
+      </footer>
+    </div>
+
+    <!-- Settings drawer -->
+    <div id="settings" class="hidden">
+      <div class="settings-card">
+        <div class="settings-head">
+          <h2>Settings</h2>
+          <button id="settingsClose" class="icon">✕</button>
+        </div>
+        <div class="settings-body">
+          <label>Model
+            <select id="setModel"></select>
+          </label>
+          <label class="row">Default thinking mode
+            <input type="checkbox" id="setThinking" />
+          </label>
+          <label>Temperature <span id="tempVal" class="muted"></span>
+            <input type="range" id="setTemp" min="0" max="1.5" step="0.05" />
+          </label>
+          <label>System prompt
+            <textarea id="setSystem" rows="3"></textarea>
+          </label>
+
+          <hr />
+          <label class="row">Stealth (hide from screen-share)
+            <input type="checkbox" id="setStealth" />
+          </label>
+          <label>Opacity <span id="opVal" class="muted"></span>
+            <input type="range" id="setOpacity" min="0.3" max="1" step="0.02" />
+          </label>
+          <label>Theme
+            <select id="setTheme">
+              <option value="glass">Glass</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+
+          <hr />
+          <label>Ollama host
+            <input type="text" id="setHost" />
+          </label>
+
+          <hr />
+          <div class="muted small">Hotkeys (click a field, then press the combo)</div>
+          <label>Show / hide <input type="text" id="hkToggle" class="hk" readonly /></label>
+          <label>Focus input <input type="text" id="hkFocus" class="hk" readonly /></label>
+          <label>Clear chat <input type="text" id="hkClear" class="hk" readonly /></label>
+
+          <hr />
+          <details>
+            <summary>Audio copilot (Phase 4)</summary>
+            <label>Source
+              <select id="setAudioSource">
+                <option value="system">System audio (the call)</option>
+                <option value="mic">Microphone</option>
+                <option value="both">Both</option>
+              </select>
+            </label>
+            <label>Whisper model
+              <select id="setWhisper">
+                <option value="tiny">tiny (fastest)</option>
+                <option value="base">base</option>
+                <option value="small">small</option>
+                <option value="medium">medium (best)</option>
+              </select>
+            </label>
+            <label class="row">Auto-show when speech detected
+              <input type="checkbox" id="setAutoShow" />
+            </label>
+            <p class="muted small">Transcription sidecar not wired yet — settings are saved for when it lands.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="hidden"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
