@@ -525,13 +525,9 @@ function renderEmpty() {
   if (els.messages.children.length) return;
   const e = document.createElement('div');
   e.className = 'empty';
-  const sk = activeSkillObj();
-  const line = sk
-    ? '<b>' + sk.name + '</b> skill · on-device with <b>' + (settings.model || 'your model') + '</b>.'
-    : 'Running fully on-device with <b>' + (settings.model || 'your model') + '</b>.';
   e.innerHTML =
     icon('i-orbit', 'mark') +
-    '<div class="title">Ask Orbit anything</div>' + line;
+    '<div class="title">Ask Orbit anything</div>';
   els.messages.appendChild(e);
 }
 function removeEmpty() {
