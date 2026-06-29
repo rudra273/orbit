@@ -13,9 +13,28 @@ const os = require('os');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const store = require('./store');
+const providers = require('./providers');
+
+// Load a git-ignored .env from the repo root (KEY=value lines) into process.env
+// so API keys can be supplied env-var style without touching any saved file.
+(function loadDotEnv() {
+  try {
+    const envPath = path.join(__dirname, '..', '.env');
+    const raw = fs.readFileSync(envPath, 'utf8');
+    for (const line of raw.split('\n')) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/i);
+      if (!m) continue;
+      const key = m[1];
+      let val = m[2].replace(/^["']|["']$/g, '');
+      if (!(key in process.env)) process.env[key] = val;
+    }
+  } catch {
+    // no .env — fine
+  }
+})();
 
 let win = null;
-let activeChat = null; // AbortController for the in-flight Ollama request
+let activeChat = null; // AbortController for the in-flight chat request
 
 // ---- Transcription sidecar state -------------------------------------------
 let sidecar = null;
@@ -116,15 +135,32 @@ function registerHotkeys() {
   safe(hk.clear, () => win && win.webContents.send('clear-chat'));
 }
 
-// ---- Ollama bridge (streamed via IPC to avoid CORS) -------------------------
-ipcMain.handle('models:list', async () => {
-  const host = store.get('ollamaHost');
+// ---- Provider bridge (streamed via IPC to avoid CORS) -----------------------
+// Provider metadata + which ones currently have a usable key (stored or env).
+ipcMain.handle('providers:list', () => {
+  const s = store.getAll();
+  return providers.list().map((p) => ({
+    ...p,
+    hasKey: !p.needsKey || !!providers.resolveKey(p.id, s.apiKeys),
+    // surface whether the key came from an env var (so the UI can show it's set)
+    keyFromEnv: p.needsKey && !((s.apiKeys || {})[p.id] || '').trim() && !!providers.resolveKey(p.id, s.apiKeys)
+  }));
+});
+
+// List the active provider's models. The renderer passes the provider id so the
+// dropdown can repopulate when the user switches providers.
+ipcMain.handle('models:list', async (evt, providerId) => {
+  const s = store.getAll();
+  const id = providerId || s.provider || 'local';
+  const provider = providers.get(id);
   try {
-    const r = await fetch(`${host}/api/tags`);
-    const j = await r.json();
-    return { ok: true, models: (j.models || []).map((m) => m.name) };
+    const models = await provider.listModels({
+      ollamaHost: s.ollamaHost,
+      apiKey: providers.resolveKey(id, s.apiKeys)
+    });
+    return { ok: true, provider: id, models };
   } catch (e) {
-    return { ok: false, error: String(e), models: [] };
+    return { ok: false, provider: id, error: String(e), models: [] };
   }
 });
 
@@ -136,78 +172,48 @@ ipcMain.handle('chat:stop', () => {
 
 ipcMain.handle('chat:send', async (evt, payload) => {
   const s = store.getAll();
-  const host = s.ollamaHost;
-  const body = {
-    model: payload.model || s.model,
-    messages: payload.messages,
-    stream: true,
-    options: { temperature: payload.temperature ?? s.temperature }
-  };
-  // Send `think` EXPLICITLY (true OR false). Reasoning models default to
-  // thinking ON, so omitting the flag is not enough to disable it.
-  const wantThinking = !!(payload.thinking ?? s.thinking);
+  const id = payload.provider || s.provider || 'local';
+  const provider = providers.get(id);
 
   const send = (channel, data) => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, data);
   };
 
-  const run = async (includeThinkParam) => {
-    if (includeThinkParam) body.think = wantThinking;
-    else delete body.think; // fallback for models that reject the param entirely
-    activeChat = new AbortController();
-    const resp = await fetch(`${host}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: activeChat.signal
-    });
-    if (!resp.ok) {
-      const text = await resp.text();
-      throw new Error(`Ollama ${resp.status}: ${text}`);
-    }
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      let nl;
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl).trim();
-        buf = buf.slice(nl + 1);
-        if (!line) continue;
-        let obj;
-        try {
-          obj = JSON.parse(line);
-        } catch {
-          continue;
-        }
-        if (obj.message) {
-          if (obj.message.thinking) send('chat:thinking', obj.message.thinking);
-          if (obj.message.content) send('chat:token', obj.message.content);
-        }
-        if (obj.done) send('chat:done', { model: body.model });
-      }
-    }
+  activeChat = new AbortController();
+  const opts = {
+    ollamaHost: s.ollamaHost,
+    apiKey: providers.resolveKey(id, s.apiKeys),
+    model: payload.model || s.model,
+    messages: payload.messages,
+    temperature: payload.temperature ?? s.temperature,
+    thinking: !!(payload.thinking ?? s.thinking),
+    signal: activeChat.signal
+  };
+  const handlers = {
+    onThinking: (t) => send('chat:thinking', t),
+    onToken: (t) => send('chat:token', t),
+    // model requires reasoning — couldn't honor "Think OFF" for this one
+    onForcedThinking: () => send('chat:forcedThinking', { model: opts.model, provider: id })
   };
 
   try {
-    await run(true);
+    await provider.streamChat(opts, handlers);
+    send('chat:done', { model: opts.model, provider: id });
     return { ok: true };
   } catch (e) {
-    // If the model doesn't accept a `think` param at all, retry without it.
-    if (activeChat !== null && /think|reasoning|does not support/i.test(String(e))) {
+    if (activeChat === null) return { ok: true }; // user-aborted
+    // Local fallback: some Ollama models reject the `think` param entirely.
+    if (id === 'local' && /think|reasoning|does not support/i.test(String(e))) {
       try {
         send('chat:warn', 'This model does not support a separate thinking mode; answering normally.');
-        await run(false);
+        await provider.streamChat({ ...opts, thinking: undefined }, handlers);
+        send('chat:done', { model: opts.model, provider: id });
         return { ok: true };
       } catch (e2) {
         send('chat:error', String(e2));
         return { ok: false, error: String(e2) };
       }
     }
-    if (activeChat === null) return { ok: true }; // user-aborted
     send('chat:error', String(e));
     return { ok: false, error: String(e) };
   } finally {

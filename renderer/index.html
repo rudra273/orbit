@@ -179,9 +179,23 @@
           </label>
 
           <hr />
-          <label>Ollama host
-            <input type="text" id="setHost" />
-          </label>
+          <details id="providersSection">
+            <summary>Providers <span class="muted small">— local & cloud models</span></summary>
+
+            <div class="prov-block">
+              <div class="prov-head">Local <span class="muted small">(Ollama)</span></div>
+              <label>Host
+                <input type="text" id="setHost" />
+              </label>
+              <p class="muted small">Models are whatever you've pulled in Ollama; they all appear in the dropdown.</p>
+            </div>
+
+            <!-- Gemini + OpenRouter blocks are built by app.js into these mounts -->
+            <div id="provGemini" class="prov-block" data-provider="gemini"></div>
+            <div id="provOpenrouter" class="prov-block" data-provider="openrouter"></div>
+
+            <p class="muted small">Keys are stored locally in your app-data folder (never in the project/git), or supply them as environment variables. Prices are USD per 1M tokens (input/output) and are just labels — edit freely.</p>
+          </details>
 
           <hr />
           <div class="muted small">Hotkeys (click a field, then press the combo)</div>

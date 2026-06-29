@@ -133,13 +133,20 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
   background: var(--accent-dim); color: var(--accent);
   box-shadow: inset 0 0 0 1px rgba(138,164,255,0.35);
 }
+/* forced-on (model requires reasoning): active look + a small "locked" dot */
+.iconbtn.forced { position: relative; }
+.iconbtn.forced::after {
+  content: ""; position: absolute; top: 3px; right: 3px;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 4px var(--accent-glow);
+}
 
 #modelSelect, #skillSelect {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 8px; font-size: 11px; padding: 4px 9px;
   color: var(--text); transition: background .15s, border-color .15s, color .15s;
 }
-#modelSelect { min-width: 150px; max-width: 190px; }
+#modelSelect { min-width: 110px; max-width: 150px; }
 #modelSelect:hover, #skillSelect:hover { background: var(--panel-strong); }
 #skillSelect { min-width: 92px; max-width: 130px; }
 /* highlight when a real skill (not None) is active */
@@ -450,6 +457,35 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
 }
 .skill-add:hover { filter: brightness(1.12); }
 .skill-add:active { transform: scale(0.96); }
+
+/* ---- Providers editor (in Settings) ---- */
+.prov-block {
+  border: 1px solid var(--border-soft); border-radius: 11px; padding: 11px;
+  margin: 9px 0; display: flex; flex-direction: column; gap: 9px;
+}
+.prov-head { font-size: 12.5px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.prov-env { color: var(--accent); font-weight: 500; }
+.model-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.model-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--panel-strong); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 5px 4px 10px; font-size: 11.5px; max-width: 100%;
+}
+.model-chip .mc-id { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-chip .mc-price {
+  font-size: 10px; color: var(--accent); background: var(--accent-dim);
+  padding: 1px 6px; border-radius: 999px; flex-shrink: 0;
+}
+.model-chip .mc-price.free { color: #7ee787; background: rgba(126,231,135,0.14); }
+.model-chip .mc-del {
+  background: transparent; border: none; color: var(--faint); cursor: pointer;
+  width: 16px; height: 16px; display: grid; place-items: center; border-radius: 50%; flex-shrink: 0;
+  font-size: 13px; line-height: 1;
+}
+.model-chip .mc-del:hover { color: #fff; background: var(--danger); }
+.model-add-row { display: flex; gap: 6px; }
+.model-add-row input { flex: 1; }
+.model-add-row .skill-add { align-self: stretch; padding: 0 12px; white-space: nowrap; }
 
 .muted { color: var(--muted); }
 .small { font-size: 10.5px; }

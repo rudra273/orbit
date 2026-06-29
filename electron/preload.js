@@ -5,8 +5,9 @@ contextBridge.exposeInMainWorld('orbit', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
 
-  // models
-  listModels: () => ipcRenderer.invoke('models:list'),
+  // providers + models
+  listProviders: () => ipcRenderer.invoke('providers:list'),
+  listModels: (providerId) => ipcRenderer.invoke('models:list', providerId),
 
   // chat history
   listChats: () => ipcRenderer.invoke('chats:list'),
@@ -22,6 +23,7 @@ contextBridge.exposeInMainWorld('orbit', {
   onDone: (cb) => ipcRenderer.on('chat:done', (_e, d) => cb(d)),
   onError: (cb) => ipcRenderer.on('chat:error', (_e, m) => cb(m)),
   onWarn: (cb) => ipcRenderer.on('chat:warn', (_e, m) => cb(m)),
+  onForcedThinking: (cb) => ipcRenderer.on('chat:forcedThinking', (_e, d) => cb(d)),
 
   // audio / transcription
   audioStart: () => ipcRenderer.invoke('audio:start'),

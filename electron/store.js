@@ -12,6 +12,31 @@ const DEFAULTS = {
   systemPrompt:
     'You are Orbit, a concise, helpful local AI copilot. Answer directly and briefly unless asked for detail.',
 
+  // providers — where chat/model requests go. 'local' is Ollama (the default).
+  provider: 'local', // 'local' | 'gemini' | 'openrouter'
+  // last-chosen model per provider, so switching back restores it
+  providerModels: { local: 'gemma4:12b-mlx', gemini: 'gemini-3.5-flash', openrouter: 'openai/gpt-oss-120b' },
+  // API keys (fall back to env vars GEMINI_API_KEY / OPENROUTER_API_KEY if blank).
+  // These live in userData's orbit-settings.json, never in the repo.
+  apiKeys: { gemini: '', openrouter: '' },
+
+  // Curated model lists per cloud provider. Only these appear in the model
+  // dropdown (Ollama is excluded — it lists whatever is installed). Each entry:
+  // { id, in, out } where in/out are USD per 1M tokens (null = unknown/free).
+  // Prices verified via web search, June 2026 — edit/add freely in Settings.
+  curatedModels: {
+    gemini: [
+      { id: 'gemini-3.5-flash', in: 1.5, out: 9.0 },
+      { id: 'gemini-3.1-flash-lite', in: 0.25, out: 1.5 },
+      { id: 'gemini-2.5-flash-lite', in: 0.1, out: 0.4 }
+    ],
+    openrouter: [
+      { id: 'openai/gpt-oss-120b', in: 0.03, out: 0.15 },
+      { id: 'deepseek/deepseek-v4-flash', in: 0.09, out: 0.18 },
+      { id: 'google/gemini-3.5-flash', in: 1.5, out: 9.0 }
+    ]
+  },
+
   // skills — selectable "modes" layered on top of the base systemPrompt.
   // activeSkill is the id of the chosen skill ('' = None / general).
   activeSkill: '',

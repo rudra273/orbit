@@ -164,6 +164,7 @@ function renderMarkdown(src) {
   settings = await api.getSettings();
   applyTheme();
   updateThinkBtn();
+  await refreshProviders();
   await refreshModels();
   refreshSkills();
   bindUI();
@@ -172,10 +173,18 @@ function renderMarkdown(src) {
   autoGrow();
 })();
 
+// models that require reasoning (can't be turned off) — keyed by "provider::model"
+const forcedThinkingModels = new Set();
+
 function updateThinkBtn() {
-  const on = !!settings.thinking;
+  const key = encodeModel(settings.provider || 'local', settings.model);
+  const forced = forcedThinkingModels.has(key);
+  const on = forced || !!settings.thinking;
   els.think.classList.toggle('active', on);
-  els.think.title = on ? 'Thinking mode: ON' : 'Thinking mode: OFF';
+  els.think.classList.toggle('forced', forced);
+  els.think.title = forced
+    ? 'This model always thinks (reasoning required)'
+    : on ? 'Thinking mode: ON' : 'Thinking mode: OFF';
 }
 
 function applyTheme() {
@@ -183,20 +192,130 @@ function applyTheme() {
   document.body.style.opacity = settings.opacity ?? 1;
 }
 
+// ---- Providers & models -----------------------------------------------------
+// The titlebar shows ONE dropdown of every model across all configured
+// providers. Provider selection is implicit: choosing a model selects its
+// provider too. Option values are encoded "providerId::modelName".
+let providerMeta = []; // [{id, name, needsKey, hasKey, keyFromEnv}]
+
+const encodeModel = (pid, model) => pid + '::' + model;
+function decodeModel(value) {
+  const i = value.indexOf('::');
+  return i < 0 ? { provider: 'local', model: value } : { provider: value.slice(0, i), model: value.slice(i + 2) };
+}
+
+async function refreshProviders() {
+  providerMeta = await api.listProviders();
+}
+
+// Curated entries for a cloud provider: [{id, in, out}]. Local has none.
+function curatedFor(pid) {
+  return ((settings.curatedModels || {})[pid] || []).slice();
+}
+
+// Compact price label, e.g. "$1.5/$9" or "free". null in/out => unknown.
+function priceLabel(entry) {
+  if (!entry) return '';
+  if (entry.in == null && entry.out == null) return '';
+  if (entry.in === 0 && entry.out === 0) return 'free';
+  const f = (n) => (n == null ? '?' : '$' + n);
+  return f(entry.in) + '/' + f(entry.out);
+}
+
+// Build the titlebar dropdown. Local => installed models (from Ollama).
+// Cloud providers => your curated list only (with price tags).
 async function refreshModels() {
-  const r = await api.listModels();
-  const list = r.models && r.models.length ? r.models : [settings.model];
+  els.model.disabled = true;
+
+  // Local models come from the Ollama API; cloud models come from the curated list.
+  const local = providerMeta.find((p) => p.id === 'local');
+  let localModels = [];
+  let localErr = null;
+  if (local) {
+    const r = await api.listModels('local');
+    localModels = r.ok ? r.models : [];
+    if (!r.ok) localErr = r.error;
+  }
+  els.model.disabled = false;
+
+  const groups = [];
+  if (local) {
+    groups.push({
+      provider: local,
+      entries: localModels.map((m) => ({ id: m })) // no price for local
+    });
+  }
+  for (const p of providerMeta) {
+    if (p.id === 'local') continue;
+    if (p.needsKey && !p.hasKey) continue; // skip providers without a key
+    groups.push({ provider: p, entries: curatedFor(p.id) });
+  }
+
+  // ensure the currently-active model is always selectable
+  const cur = { provider: settings.provider || 'local', model: settings.model };
+  const curGroup = groups.find((g) => g.provider.id === cur.provider);
+  if (cur.model && curGroup && !curGroup.entries.some((e) => e.id === cur.model)) {
+    curGroup.entries.unshift({ id: cur.model });
+  }
+
+  fillModelSelects(groups, encodeModel(cur.provider, cur.model));
+
+  if (localErr) toast('Local: ' + trimErr(localErr));
+}
+
+function fillModelSelects(groups, chosenValue) {
   for (const sel of [els.model, $('setModel')]) {
     if (!sel) continue;
     sel.innerHTML = '';
-    for (const m of list) {
-      const o = document.createElement('option');
-      o.value = o.textContent = m;
-      sel.appendChild(o);
+    for (const g of groups) {
+      if (!g.entries.length) continue;
+      const og = document.createElement('optgroup');
+      og.label = g.provider.name;
+      for (const e of g.entries) {
+        const o = document.createElement('option');
+        o.value = encodeModel(g.provider.id, e.id);
+        const price = priceLabel(e);
+        // full text (id + price) shown when the list is OPEN; store the bare id
+        // so we can shrink the option while it's the closed/selected one.
+        o.textContent = e.id + (price ? '  ·  ' + price : '');
+        o.dataset.id = e.id;
+        o.dataset.full = o.textContent;
+        og.appendChild(o);
+      }
+      sel.appendChild(og);
     }
-    sel.value = settings.model;
+    if (chosenValue) sel.value = chosenValue;
   }
-  if (!r.ok) toast('Ollama not reachable — is it running?');
+  // collapse the selected option in the titlebar so the closed box is compact
+  collapseSelectedOption(els.model);
+}
+
+// When closed, the selected <option>'s text is what the box shows. Strip its
+// price to id-only; restore the full id·price text whenever the list opens.
+function collapseSelectedOption(sel) {
+  if (!sel) return;
+  const opts = sel.options;
+  for (const o of opts) if (o.dataset.full) o.textContent = o.dataset.id; // bare while closed
+  const restore = () => { for (const o of opts) if (o.dataset.full) o.textContent = o.dataset.full; };
+  const collapse = () => {
+    for (const o of opts) o.textContent = o === sel.selectedOptions[0] ? o.dataset.id : o.dataset.full;
+  };
+  // open → show prices; close/change → collapse selected back to id
+  sel.onmousedown = restore;
+  sel.onfocus = restore;
+  sel.onblur = collapse;
+}
+
+function trimErr(e) {
+  const s = String(e);
+  return s.length > 120 ? s.slice(0, 117) + '…' : s;
+}
+
+// Selecting a model also sets its provider. Remembers the per-provider choice.
+async function setActiveModel(value) {
+  const { provider, model } = decodeModel(value);
+  const providerModels = { ...(settings.providerModels || {}), [provider]: model };
+  settings = await api.setSettings({ provider, model, providerModels });
 }
 
 // ---- Skills -----------------------------------------------------------------
@@ -371,8 +490,9 @@ function bindUI() {
   els.input.addEventListener('input', autoGrow);
 
   els.model.onchange = async () => {
-    settings = await api.setSettings({ model: els.model.value });
-    $('setModel').value = settings.model;
+    await setActiveModel(els.model.value);
+    $('setModel').value = els.model.value; // keep settings copy in sync
+    updateThinkBtn(); // reflect whether the new model forces reasoning
   };
 
   els.skill.onchange = async () => {
@@ -423,13 +543,14 @@ function sendMessage() {
 
   api
     .sendChat({
+      provider: settings.provider,
       model: settings.model,
       messages,
       thinking: settings.thinking,
       temperature: settings.temperature
     })
     .then((res) => {
-      if (res && res.ok === false) toast(res.error || 'Request failed');
+      if (res && res.ok === false) toast(trimErr(res.error || 'Request failed'));
     });
 }
 
@@ -461,6 +582,14 @@ function bindStream() {
     persistCurrentChat();
   });
   api.onWarn((m) => toast(m));
+  api.onForcedThinking((d) => {
+    const key = encodeModel(d.provider, d.model);
+    if (!forcedThinkingModels.has(key)) {
+      forcedThinkingModels.add(key);
+      updateThinkBtn();
+      toast('This model always thinks — reasoning can’t be turned off');
+    }
+  });
 }
 
 function setStreaming(on) {
@@ -682,7 +811,7 @@ function relativeTime(ts) {
 
 // ---- Settings form ----------------------------------------------------------
 function openSettings() {
-  $('setModel').value = settings.model;
+  $('setModel').value = encodeModel(settings.provider || 'local', settings.model);
   $('setThinking').checked = !!settings.thinking;
   $('setTemp').value = settings.temperature;
   $('tempVal').textContent = settings.temperature;
@@ -692,6 +821,7 @@ function openSettings() {
   $('opVal').textContent = settings.opacity;
   $('setTheme').value = settings.theme;
   $('setHost').value = settings.ollamaHost;
+  renderProviderBlocks();
   $('hkToggle').value = settings.hotkeys.toggle;
   $('hkFocus').value = settings.hotkeys.focus;
   $('hkClear').value = settings.hotkeys.clear;
@@ -702,10 +832,178 @@ function openSettings() {
   els.settings.classList.remove('hidden');
 }
 
+function keyFromEnv(id) {
+  const p = providerMeta.find((x) => x.id === id);
+  return !!(p && p.keyFromEnv);
+}
+
+// Persist an API key, then re-evaluate provider readiness + reload models.
+async function saveKey(provId, value) {
+  const apiKeys = { ...(settings.apiKeys || {}), [provId]: value.trim() };
+  settings = await api.setSettings({ apiKeys });
+  await refreshProviders();
+  await refreshModels();
+  renderProviderBlocks();
+}
+
+// Build the per-cloud-provider Settings block: key field + curated model chips
+// (with price tags) + an add-model row backed by the API's available ids.
+const ENV_VARS = { gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY' };
+const PROV_NAMES = { gemini: 'Gemini', openrouter: 'OpenRouter' };
+
+function renderProviderBlocks() {
+  for (const pid of ['gemini', 'openrouter']) {
+    const mount = $('prov' + pid[0].toUpperCase() + pid.slice(1));
+    if (!mount) continue;
+    mount.innerHTML = '';
+
+    // header
+    const head = document.createElement('div');
+    head.className = 'prov-head';
+    head.innerHTML = PROV_NAMES[pid] +
+      (keyFromEnv(pid) ? ' <span class="prov-env small">· key from env</span>' : '');
+    mount.appendChild(head);
+
+    // API key field
+    const keyLabel = document.createElement('label');
+    keyLabel.textContent = 'API key';
+    const keyInput = document.createElement('input');
+    keyInput.type = 'password';
+    keyInput.autocomplete = 'off';
+    keyInput.value = (settings.apiKeys || {})[pid] || '';
+    keyInput.placeholder = 'leave blank to use ' + ENV_VARS[pid];
+    keyInput.onchange = () => saveKey(pid, keyInput.value);
+    keyLabel.appendChild(keyInput);
+    mount.appendChild(keyLabel);
+
+    // curated model chips
+    const chips = document.createElement('div');
+    chips.className = 'model-chips';
+    const curated = curatedFor(pid);
+    if (!curated.length) {
+      const e = document.createElement('div');
+      e.className = 'muted small';
+      e.textContent = 'No models added yet.';
+      chips.appendChild(e);
+    }
+    for (const entry of curated) {
+      chips.appendChild(buildModelChip(pid, entry));
+    }
+    mount.appendChild(chips);
+
+    // add-model row (datalist autocomplete from the API's available ids)
+    mount.appendChild(buildAddRow(pid));
+  }
+}
+
+function buildModelChip(pid, entry) {
+  const chip = document.createElement('div');
+  chip.className = 'model-chip';
+  const id = document.createElement('span');
+  id.className = 'mc-id';
+  id.textContent = entry.id;
+  id.title = entry.id;
+  chip.appendChild(id);
+
+  const price = priceLabel(entry);
+  if (price) {
+    const tag = document.createElement('span');
+    tag.className = 'mc-price' + (price === 'free' ? ' free' : '');
+    tag.textContent = price === 'free' ? 'free' : price + ' /1M';
+    chip.appendChild(tag);
+  }
+
+  const del = document.createElement('button');
+  del.className = 'mc-del';
+  del.textContent = '×';
+  del.title = 'Remove';
+  del.onclick = () => removeCuratedModel(pid, entry.id);
+  chip.appendChild(del);
+  return chip;
+}
+
+function buildAddRow(pid) {
+  const row = document.createElement('div');
+  row.className = 'model-add-row';
+
+  const listId = 'dl-' + pid;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'model id (e.g. ' + (pid === 'gemini' ? 'gemini-3.5-flash' : 'openai/gpt-oss-120b') + ')';
+  input.setAttribute('list', listId);
+
+  // datalist of available ids fetched lazily on focus (needs a key)
+  const datalist = document.createElement('datalist');
+  datalist.id = listId;
+  input.onfocus = async () => {
+    if (datalist.dataset.loaded) return;
+    const meta = providerMeta.find((p) => p.id === pid);
+    if (!meta || (meta.needsKey && !meta.hasKey)) return;
+    const r = await api.listModels(pid);
+    if (r.ok) {
+      datalist.innerHTML = '';
+      for (const m of r.models) {
+        const o = document.createElement('option');
+        o.value = m;
+        datalist.appendChild(o);
+      }
+      datalist.dataset.loaded = '1';
+    }
+  };
+
+  const priceIn = document.createElement('input');
+  priceIn.type = 'text'; priceIn.placeholder = '$in'; priceIn.style.maxWidth = '52px';
+  const priceOut = document.createElement('input');
+  priceOut.type = 'text'; priceOut.placeholder = '$out'; priceOut.style.maxWidth = '52px';
+
+  const add = document.createElement('button');
+  add.className = 'skill-add';
+  add.textContent = '+ Add';
+  const doAdd = () => {
+    const id = input.value.trim();
+    if (!id) return;
+    addCuratedModel(pid, id, parseNum(priceIn.value), parseNum(priceOut.value));
+    input.value = priceIn.value = priceOut.value = '';
+  };
+  add.onclick = doAdd;
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doAdd(); } });
+
+  row.appendChild(input);
+  row.appendChild(priceIn);
+  row.appendChild(priceOut);
+  row.appendChild(add);
+  row.appendChild(datalist);
+  return row;
+}
+
+function parseNum(s) {
+  const n = parseFloat(String(s).replace(/[^0-9.]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+async function addCuratedModel(pid, id, priceIn, priceOut) {
+  const list = curatedFor(pid);
+  if (list.some((e) => e.id === id)) { toast('Already added'); return; }
+  list.push({ id, in: priceIn, out: priceOut });
+  const curatedModels = { ...(settings.curatedModels || {}), [pid]: list };
+  settings = await api.setSettings({ curatedModels });
+  renderProviderBlocks();
+  await refreshModels();
+  toast('Added ' + id);
+}
+
+async function removeCuratedModel(pid, id) {
+  const list = curatedFor(pid).filter((e) => e.id !== id);
+  const curatedModels = { ...(settings.curatedModels || {}), [pid]: list };
+  settings = await api.setSettings({ curatedModels });
+  renderProviderBlocks();
+  await refreshModels();
+}
+
 function bindSettingsForm() {
   const patch = async (p) => { settings = await api.setSettings(p); };
 
-  $('setModel').onchange = (e) => { patch({ model: e.target.value }); els.model.value = e.target.value; };
+  $('setModel').onchange = async (e) => { await setActiveModel(e.target.value); els.model.value = e.target.value; };
   $('setThinking').onchange = async (e) => {
     await patch({ thinking: e.target.checked });
     updateThinkBtn();
@@ -716,6 +1014,7 @@ function bindSettingsForm() {
   $('setOpacity').oninput = (e) => { $('opVal').textContent = e.target.value; settings.opacity = parseFloat(e.target.value); document.body.style.opacity = e.target.value; patch({ opacity: parseFloat(e.target.value) }); };
   $('setTheme').onchange = (e) => { settings.theme = e.target.value; applyTheme(); patch({ theme: e.target.value }); };
   $('setHost').onchange = async (e) => { await patch({ ollamaHost: e.target.value }); refreshModels(); };
+
   $('setAudioSource').onchange = (e) => patch({ audioSource: e.target.value });
   $('setWhisper').onchange = (e) => patch({ whisperModel: e.target.value });
   $('setAutoShow').onchange = (e) => patch({ autoShowOnSpeech: e.target.checked });
