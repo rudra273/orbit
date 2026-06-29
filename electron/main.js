@@ -386,6 +386,16 @@ ipcMain.handle('chats:get', (evt, id) => store.getChat(id));
 ipcMain.handle('chats:save', (evt, chat) => store.saveChat(chat));
 ipcMain.handle('chats:delete', (evt, id) => store.deleteChat(id));
 
+// Quick restart: relaunch a fresh instance, then exit this one. Cleans up the
+// sidecar + hotkeys first (app.exit skips the normal 'will-quit' handler).
+ipcMain.handle('app:restart', () => {
+  if (activeChat) { try { activeChat.abort(); } catch {} }
+  if (sidecar) { try { sidecar.kill(); } catch {} }
+  globalShortcut.unregisterAll();
+  app.relaunch();
+  app.exit(0);
+});
+
 ipcMain.handle('win:hide', () => win && win.hide());
 ipcMain.handle('win:setIgnoreMouse', (evt, ignore) =>
   win && win.setIgnoreMouseEvents(!!ignore, { forward: true })

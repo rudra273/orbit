@@ -22,6 +22,7 @@ const els = {
   transcriptBody: $('transcriptBody'),
   answer: $('answerBtn'),
   settingsBtn: $('settingsBtn'),
+  restartBtn: $('restartBtn'),
   settings: $('settings'),
   settingsClose: $('settingsClose'),
   toast: $('toast'),
@@ -565,6 +566,18 @@ function bindUI() {
 
   els.settingsBtn.onclick = openSettings;
   els.settingsClose.onclick = () => els.settings.classList.add('hidden');
+
+  // Quick restart — click once to arm ("Restart?"), click again within 3s to do it.
+  let restartArmed = null;
+  els.restartBtn.onclick = () => {
+    if (restartArmed) { clearTimeout(restartArmed); api.restart(); return; }
+    els.restartBtn.classList.add('armed');
+    toast('Click restart again to relaunch Orbit');
+    restartArmed = setTimeout(() => {
+      restartArmed = null;
+      els.restartBtn.classList.remove('armed');
+    }, 3000);
+  };
 
   api.onAudioStatus(onAudioStatus);
 

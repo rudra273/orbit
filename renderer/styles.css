@@ -140,6 +140,12 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
   width: 5px; height: 5px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 4px var(--accent-glow);
 }
+/* restart button armed for confirm */
+.iconbtn.armed {
+  color: var(--danger); background: rgba(255,107,107,0.14);
+  animation: armpulse 1s ease-in-out infinite;
+}
+@keyframes armpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 #modelSelect, #skillSelect {
   background: var(--panel); border: 1px solid var(--border);
