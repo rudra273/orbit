@@ -225,23 +225,27 @@ ipcMain.handle('chat:send', async (evt, payload) => {
 });
 
 // ---- Transcription sidecar --------------------------------------------------
+// Repo root: ORBIT_REPO (baked into the bundle by package-app.sh) wins; else the
+// symlinked bundle resolves __dirname/.. back to the real repo. Fully portable.
+function repoRoot() {
+  return process.env.ORBIT_REPO || path.join(__dirname, '..');
+}
 function sidecarPython() {
-  // Resolve the venv python across dev (run from repo) and packaged (Orbit.app).
   const candidates = [
     process.env.ORBIT_PYTHON,
-    path.join(__dirname, '..', '.venv', 'bin', 'python'), // dev: repo/.venv
-    '/Users/rudra/projects/orbit/.venv/bin/python' // packaged: point back at the repo venv
+    path.join(repoRoot(), '.venv', 'bin', 'python'),
+    path.join(__dirname, '..', '.venv', 'bin', 'python')
   ].filter(Boolean);
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
-  return 'python3.12';
+  return 'python3'; // last resort — assume on PATH
 }
 
 function sidecarScript() {
   const candidates = [
-    path.join(__dirname, '..', 'sidecar', 'transcribe.py'),
-    '/Users/rudra/projects/orbit/sidecar/transcribe.py'
+    path.join(repoRoot(), 'sidecar', 'transcribe.py'),
+    path.join(__dirname, '..', 'sidecar', 'transcribe.py')
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;

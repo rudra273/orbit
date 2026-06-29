@@ -40,6 +40,10 @@ $P -c "Add :NSMicrophoneUsageDescription string Orbit transcribes audio locally.
 $P -c "Add :NSCameraUsageDescription string Not used." 2>/dev/null "$PLIST" || true
 # REQUIRED for desktopCapturer loopback (system) audio on macOS 14.2+.
 $P -c "Add :NSAudioCaptureUsageDescription string Orbit transcribes call audio locally on-device." 2>/dev/null "$PLIST" || true
+# Bake the repo path so the app finds .venv / sidecar wherever it was cloned.
+$P -c "Delete :LSEnvironment" 2>/dev/null "$PLIST" || true
+$P -c "Add :LSEnvironment dict" "$PLIST"
+$P -c "Add :LSEnvironment:ORBIT_REPO string $ROOT" "$PLIST"
 
 # Re-sign ad-hoc (deep) so macOS accepts the modified bundle with a stable id.
 echo "→ Code-signing (ad-hoc)…"
