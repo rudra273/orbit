@@ -40,6 +40,18 @@ const els = {
 function icon(id, cls) {
   return `<svg class="${cls || ''}" viewBox="0 0 24 24"><use href="#${id}"/></svg>`;
 }
+// Animated atom: a core with three inclined orbits, each with a revolving
+// electron. Mirrors the brand mark in index.html; styled by the .atom rules.
+function atomLogo(cls) {
+  const ring = `<g class="atom-ring %R%"><g class="atom-orbit">
+      <circle class="atom-path" cx="12" cy="12" r="9.4" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <g class="atom-spin"><circle class="atom-e" cx="21.4" cy="12" r="1.7" fill="currentColor"/></g>
+    </g></g>`;
+  return `<svg class="atom ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true">
+    ${ring.replace('%R%', 'r1')}${ring.replace('%R%', 'r2')}${ring.replace('%R%', 'r3')}
+    <circle class="atom-core" cx="12" cy="12" r="2.8" fill="currentColor"/>
+  </svg>`;
+}
 
 // ---- Markdown ---------------------------------------------------------------
 // Compact, dependency-free markdown → HTML for assistant messages.
@@ -830,7 +842,7 @@ function renderEmpty() {
   const e = document.createElement('div');
   e.className = 'empty';
   e.innerHTML =
-    icon('i-orbit', 'mark') +
+    atomLogo('mark') +
     '<div class="title">Ask Orbit anything</div>';
   els.messages.appendChild(e);
 }

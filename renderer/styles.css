@@ -109,6 +109,38 @@ html, body {
   width: 17px; height: 17px; color: var(--accent);
   filter: drop-shadow(0 0 5px var(--accent-glow));
 }
+
+/* ===== Animated atom logo ===== */
+/* All transforms pivot on the SVG centre (12,12 in viewBox units). */
+.atom .atom-ring,
+.atom .atom-orbit,
+.atom .atom-spin {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+/* Three orbital planes at fixed inclinations, each its own colour.
+   The ellipse + electron both use currentColor, so `color` tints both. */
+.atom .atom-ring.r1 { transform: rotate(0deg);   color: #8aa4ff; } /* blue   */
+.atom .atom-ring.r2 { transform: rotate(60deg);  color: #45e0c8; } /* teal   */
+.atom .atom-ring.r3 { transform: rotate(120deg); color: #ff7eb6; } /* pink   */
+/* Squash the circular orbit into an ellipse (3.8 / 9.4 ≈ 0.4). */
+.atom .atom-orbit { transform: scaleY(0.404); }
+/* The electron revolves around the (now elliptical) path. */
+.atom .atom-spin { animation: atomspin 2.6s linear infinite; }
+.atom .r2 .atom-spin { animation-duration: 3.4s; animation-delay: -1.1s; }
+.atom .r3 .atom-spin { animation-duration: 2.1s; animation-delay: -0.7s; }
+.atom .atom-core {
+  animation: atomcore 2.6s ease-in-out infinite;
+  transform-box: view-box; transform-origin: 12px 12px;
+}
+@keyframes atomspin { to { transform: rotate(360deg); } }
+@keyframes atomcore {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.78; transform: scale(0.88); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atom .atom-spin, .atom .atom-core { animation: none; }
+}
 .brand .name {
   font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
   background: linear-gradient(180deg, #fff, #c9cfdc);
