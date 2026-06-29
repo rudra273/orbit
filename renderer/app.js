@@ -18,9 +18,11 @@ const els = {
   think: $('thinkBtn'),
   mic: $('micBtn'),
   listen: $('listenBtn'),
-  transcript: $('transcript'),
-  transcriptBody: $('transcriptBody'),
-  answer: $('answerBtn'),
+  listenPanel: $('listenPanel'),
+  lpBody: $('lpBody'),
+  lpStatus: $('lpStatus'),
+  lpAdd: $('lpAdd'),
+  lpClear: $('lpClear'),
   settingsBtn: $('settingsBtn'),
   restartBtn: $('restartBtn'),
   settings: $('settings'),
@@ -574,7 +576,8 @@ function bindUI() {
   };
 
   els.listen.onclick = toggleListen;
-  els.answer.onclick = answerFromTranscript;
+  els.lpAdd.onclick = addToMessage;
+  els.lpClear.onclick = clearTranscript;
 
   els.settingsBtn.onclick = openSettings;
   els.settingsClose.onclick = () => els.settings.classList.add('hidden');
@@ -1243,9 +1246,12 @@ function toAccelerator(e) {
 
 // ---- Audio listening mode ---------------------------------------------------
 const SR = 16000; // AudioContext resamples sources to this for Whisper
-const THRESH = 0.012; // RMS speech threshold
+const THRESH = 0.006; // RMS speech threshold (system/loopback audio runs quieter than mic)
 const SILENCE_HANG_MS = 700; // silence after speech that ends a segment
 const MIN_SEG_SEC = 0.4; // ignore blips shorter than this
+const MAX_SEG_SEC = 6;  // flush a segment after this long even without a silence gap
+                        // (continuous media like YouTube never pauses, so silence
+                        //  alone would never close a segment)
 
 let listening = false;
 let audioCtx = null;
@@ -1255,11 +1261,40 @@ let srcNodes = [];
 let speechBuf = [];
 let speaking = false;
 let silenceMs = 0;
-let transcriptText = '';
+let transcriptText = ''; // accumulated heard text, shown in the panel
 
 async function toggleListen() {
   if (listening) return stopListen();
   return startListen();
+}
+
+function lpSetStatus(s) { if (els.lpStatus) els.lpStatus.textContent = s; }
+
+function renderListenPanel() {
+  const has = !!transcriptText.trim();
+  els.lpBody.innerHTML = has
+    ? escapeHtml(transcriptText)
+    : '<span class="lp-empty">Waiting for speech…</span>';
+  els.lpBody.scrollTop = els.lpBody.scrollHeight;
+  els.lpAdd.disabled = !has;
+  els.lpClear.disabled = !has;
+}
+
+function addToMessage() {
+  const t = transcriptText.trim();
+  if (!t) return;
+  els.input.value = (els.input.value ? els.input.value.trim() + ' ' : '') + t;
+  autoGrow();
+  transcriptText = '';
+  renderListenPanel();
+  if (!listening) updateListenUI(); // hide panel if we're already stopped
+  els.input.focus();
+}
+
+function clearTranscript() {
+  transcriptText = '';
+  renderListenPanel();
+  if (!listening) updateListenUI();
 }
 
 function withTimeout(promise, ms, msg) {
@@ -1271,6 +1306,12 @@ function withTimeout(promise, ms, msg) {
 
 async function startListen() {
   try {
+    // fresh start every time — drop any leftover speech buffer/state
+    speechBuf = [];
+    speaking = false;
+    silenceMs = 0;
+    dbgPeak = 0;
+    dbgSeg = 0;
     els.listen.classList.add('active');
     els.listen.title = 'Starting…';
     const wanted = settings.audioSource || 'system';
@@ -1330,8 +1371,10 @@ async function startListen() {
 
     listening = true;
     updateListenUI();
-    els.transcript.classList.remove('hidden');
-    toast('Listening — say something');
+    els.listenPanel.classList.remove('hidden');
+    lpSetStatus('Listening…');
+    renderListenPanel();
+    toast('Listening — review the transcript, then “Add to message”');
   } catch (e) {
     toast('Audio error: ' + (e.message || e));
     await cleanupAudio();
@@ -1340,12 +1383,15 @@ async function startListen() {
 }
 
 async function stopListen() {
-  await cleanupAudio();
-  if (speechBuf.length) finalizeSegment();
-  await api.audioStop();
+  // flip state + UI immediately so the button never feels stuck
   listening = false;
   updateListenUI();
+  lpSetStatus('Stopped — add the text or clear it');
   toast('Stopped listening');
+  // flush whatever was buffered, then tear down capture (async, in background)
+  if (speechBuf.length) finalizeSegment();
+  try { await cleanupAudio(); } catch (e) { console.error('cleanupAudio', e); }
+  try { await api.audioStop(); } catch (e) { console.error('audioStop', e); }
 }
 
 async function cleanupAudio() {
@@ -1364,12 +1410,24 @@ async function cleanupAudio() {
   }
 }
 
+let dbgPeak = 0; // peak RMS seen (debug HUD)
+let dbgSeg = 0;  // segments sent to transcribe
+function dbgHud() {
+  // live readout in the panel status so we can diagnose without DevTools
+  lpSetStatus(`Listening · level ${dbgPeak.toFixed(3)} (need >${THRESH}) · ${dbgSeg} seg`);
+}
+
 function onAudio(e) {
+  if (!listening) return; // user turned it off — ignore any trailing frames
   const input = e.inputBuffer.getChannelData(0);
   let sum = 0;
   for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
   const rms = Math.sqrt(sum / input.length);
   const frameMs = (input.length / SR) * 1000;
+
+  if (rms > dbgPeak) dbgPeak = rms;
+  window._rmsTick = (window._rmsTick || 0) + 1;
+  if (window._rmsTick % 10 === 0) { dbgHud(); dbgPeak *= 0.6; } // decay so it tracks recent peak
 
   if (rms > THRESH) {
     speaking = true;
@@ -1380,6 +1438,11 @@ function onAudio(e) {
     silenceMs += frameMs;
     if (silenceMs > SILENCE_HANG_MS) finalizeSegment();
   }
+
+  // Continuous audio (media playback) may never go silent — flush periodically
+  // so we don't accumulate forever and never transcribe.
+  const bufSamples = speechBuf.reduce((a, b) => a + b.length, 0);
+  if (speaking && bufSamples >= SR * MAX_SEG_SEC) finalizeSegment();
 }
 
 function finalizeSegment() {
@@ -1390,6 +1453,7 @@ function finalizeSegment() {
   silenceMs = 0;
   if (total < SR * MIN_SEG_SEC) return; // too short to be speech
 
+  dbgSeg++;
   const merged = new Float32Array(total);
   let o = 0;
   for (const c of buf) {
@@ -1397,32 +1461,20 @@ function finalizeSegment() {
     o += c.length;
   }
   api.transcribe(merged.buffer).then((r) => {
+    lpSetStatus('Listening · last transcribe: ' + JSON.stringify(r && r.text));
     if (r && r.text) addTranscript(r.text);
   });
 }
 
+// Heard speech → accumulate into the transcript panel (NOT the input box).
+// The user reviews it and clicks "Add to message" to move it into the composer.
 function addTranscript(text) {
-  transcriptText += (transcriptText ? ' ' : '') + text;
-  const line = document.createElement('div');
-  line.textContent = text;
-  els.transcriptBody.appendChild(line);
-  els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
-  els.transcript.classList.remove('hidden');
+  const t = text.trim();
+  if (!t) return;
+  transcriptText += (transcriptText ? ' ' : '') + t;
+  els.listenPanel.classList.remove('hidden'); // keep visible if a late result arrives
+  renderListenPanel();
   if (settings.autoShowOnSpeech) api.show();
-}
-
-function answerFromTranscript() {
-  if (!transcriptText.trim()) {
-    toast('Nothing transcribed yet');
-    return;
-  }
-  els.input.value =
-    'Here is what was just said in my call:\n"' +
-    transcriptText.trim() +
-    '"\n\nHelp me respond / answer this.';
-  autoGrow();
-  sendMessage();
-  transcriptText = '';
 }
 
 function onAudioStatus(status) {
@@ -1440,8 +1492,11 @@ function onAudioStatus(status) {
 
 function updateListenUI() {
   els.listen.classList.toggle('active', listening);
-  els.listen.title = listening ? 'Listening to call audio — click to stop' : 'Listen to call / system audio';
-  if (!listening && !transcriptText) els.transcript.classList.add('hidden');
+  els.listen.title = listening
+    ? 'Listening — click to stop'
+    : 'Listen to call / system audio';
+  // hide the panel only once we're stopped AND nothing is left to add
+  if (!listening && !transcriptText.trim()) els.listenPanel.classList.add('hidden');
 }
 
 // ---- Voice dictation (mic -> chat input) ------------------------------------

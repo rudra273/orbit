@@ -398,6 +398,33 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
 #transcriptBody { overflow-y: auto; padding: 0 12px 9px; font-size: 12px; user-select: text; line-height: 1.5; }
 #transcriptBody div { animation: msgIn .2s ease; }
 
+/* ============ Live transcript panel ============ */
+#listenPanel {
+  border-top: 1px solid var(--border-soft);
+  background: rgba(138,164,255,0.05);
+  display: flex; flex-direction: column; max-height: 150px;
+}
+.lp-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 12px;
+}
+.lp-title { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent); font-weight: 600; }
+.lp-ic { width: 14px; height: 14px; }
+.lp-actions { display: flex; gap: 6px; }
+.lp-btn {
+  background: var(--panel-strong); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; font-size: 11px; padding: 4px 10px; transition: filter .14s, background .14s;
+}
+.lp-btn:hover { background: var(--panel-hover); }
+.lp-btn.primary { background: var(--accent); color: #0b1020; border-color: transparent; font-weight: 600; }
+.lp-btn.primary:hover { filter: brightness(1.08); }
+.lp-btn:disabled { opacity: 0.4; cursor: default; }
+.lp-body {
+  overflow-y: auto; padding: 0 12px 9px; font-size: 12.5px; line-height: 1.5;
+  user-select: text; color: var(--text); white-space: pre-wrap;
+}
+.lp-body .lp-empty { color: var(--faint); font-style: italic; }
+
 /* ============ Composer ============ */
 #composer {
   display: flex; align-items: flex-end; gap: 8px; padding: 12px;

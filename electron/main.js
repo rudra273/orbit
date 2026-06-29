@@ -253,13 +253,17 @@ function sendToWin(channel, data) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, data);
 }
 
+let sidecarStopping = false; // set true when WE deliberately kill the sidecar
+
 function startSidecar() {
   if (sidecar) return;
+  sidecarStopping = false;
   const py = sidecarPython();
   const script = sidecarScript();
   sidecar = spawn(py, [script, store.get('whisperModel') || 'base'], {
     stdio: ['pipe', 'pipe', 'pipe']
   });
+  let lastErr = '';
   let buf = '';
   sidecar.stdout.on('data', (d) => {
     buf += d.toString();
@@ -270,13 +274,28 @@ function startSidecar() {
       if (line) handleSidecarLine(line);
     }
   });
-  sidecar.stderr.on('data', (d) => console.error('[whisper]', d.toString().trim()));
-  sidecar.on('exit', (code) => {
+  sidecar.stderr.on('data', (d) => {
+    const s = d.toString().trim();
+    if (s) { lastErr = s; console.error('[whisper]', s); }
+  });
+  sidecar.on('error', (err) => {
+    // spawn itself failed (e.g. python not found)
+    console.error('[whisper spawn error]', err);
+    lastErr = String(err);
+  });
+  sidecar.on('exit', (code, signal) => {
     sidecar = null;
     sidecarReady = false;
     for (const p of pending.values()) p.resolve('');
     pending.clear();
-    sendToWin('audio:status', code === 0 ? 'stopped' : 'crashed');
+    // A deliberate kill (audio:stop / restart) is NOT a crash.
+    if (sidecarStopping || signal === 'SIGTERM' || code === 0) {
+      sendToWin('audio:status', 'stopped');
+    } else {
+      sendToWin('audio:status', 'crashed');
+      if (lastErr) sendToWin('audio:status', 'error: ' + lastErr.split('\n').pop());
+    }
+    sidecarStopping = false;
   });
   sendToWin('audio:status', 'loading');
 }
@@ -319,9 +338,10 @@ ipcMain.handle('audio:start', () => {
 
 ipcMain.handle('audio:stop', () => {
   if (sidecar) {
+    sidecarStopping = true; // mark as intentional so exit isn't reported as a crash
     sidecar.kill();
-    sidecar = null;
     sidecarReady = false;
+    // leave `sidecar` for the 'exit' handler to clear
   }
   return true;
 });

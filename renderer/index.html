@@ -154,13 +154,16 @@
         <main id="messages"></main>
       </div>
 
-      <!-- Live audio transcript (Phase 4) -->
-      <section id="transcript" class="hidden">
-        <div class="transcript-head">
-          <span class="th-label"><svg class="th-ic" viewBox="0 0 24 24"><use href="#i-listen"/></svg> Live transcript</span>
-          <button id="answerBtn" class="chip">Answer this</button>
+      <!-- Live transcript panel (shown while Listen is on) -->
+      <section id="listenPanel" class="hidden">
+        <div class="lp-head">
+          <span class="lp-title"><svg class="lp-ic" viewBox="0 0 24 24"><use href="#i-listen"/></svg> <span id="lpStatus">Listening…</span></span>
+          <div class="lp-actions">
+            <button id="lpClear" class="lp-btn" title="Clear">Clear</button>
+            <button id="lpAdd" class="lp-btn primary" title="Add to message box">Add to message</button>
+          </div>
         </div>
-        <div id="transcriptBody"></div>
+        <div id="lpBody" class="lp-body"></div>
       </section>
 
       <!-- Composer -->
