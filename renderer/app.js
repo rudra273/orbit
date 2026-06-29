@@ -1340,14 +1340,22 @@ async function startListen() {
       await api.audioStop();
       els.listen.classList.remove('active');
       const perm = await api.permStatus();
-      if (wanted !== 'mic' && perm.screen !== 'granted') {
+      const needScreen = wanted !== 'mic';
+      if (needScreen && perm.screen === 'denied') {
+        // macOS quirk: after you toggle Screen Recording ON, the grant only takes
+        // effect once the app FULLY restarts — the running process still sees it
+        // denied. So the fix is almost always "relaunch", not "enable again".
         await api.openPerm('screen');
-        toast('macOS asked for permission. Turn ON “Orbit” under Screen Recording, then QUIT & relaunch Orbit.');
+        toast('Screen Recording: if it already shows ON for Orbit, just RESTART Orbit (↻) — macOS applies the grant only after a relaunch.');
+      } else if (needScreen && perm.screen !== 'granted') {
+        await api.openPerm('screen');
+        toast('Enable Screen Recording for Orbit in System Settings, then restart Orbit (↻).');
       } else if (perm.mic === 'denied') {
         await api.openPerm('mic');
         toast('Turn ON “Orbit” under Microphone in System Settings, then try again.');
       } else {
-        toast('Audio capture failed: ' + (capErr.message || capErr));
+        // permission looks fine — a transient capture failure; let the user retry
+        toast('Audio capture failed — try Listen again. (' + (capErr.message || capErr) + ')');
       }
       updateListenUI();
       return;
