@@ -201,7 +201,10 @@ ipcMain.handle('chat:send', async (evt, payload) => {
     send('chat:done', { model: opts.model, provider: id });
     return { ok: true };
   } catch (e) {
-    if (activeChat === null) return { ok: true }; // user-aborted
+    if (activeChat === null || /abort/i.test(String(e))) {
+      send('chat:done', { model: opts.model, provider: id, aborted: true });
+      return { ok: true }; // user-aborted — finalize the partial message
+    }
     // Local fallback: some Ollama models reject the `think` param entirely.
     if (id === 'local' && /think|reasoning|does not support/i.test(String(e))) {
       try {

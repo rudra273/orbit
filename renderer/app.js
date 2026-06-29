@@ -52,6 +52,50 @@ function escapeHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
+function unescapeHtml(s) {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+// Lightweight, language-agnostic syntax highlighting. Input is already
+// HTML-escaped. We tokenize comments, strings, numbers, and common keywords
+// with placeholder sentinels so later passes don't double-wrap, then restore.
+const CODE_KEYWORDS = new RegExp(
+  '\\b(' +
+  ['const','let','var','function','return','if','else','for','while','do','switch','case','break',
+   'continue','class','extends','new','import','from','export','default','async','await','try','catch',
+   'finally','throw','typeof','instanceof','in','of','this','super','yield','static','get','set',
+   'def','elif','lambda','None','True','False','and','or','not','pass','with','as','print',
+   'public','private','protected','void','int','float','double','string','bool','struct','enum',
+   'fn','pub','use','mut','impl','match','where','null','undefined','true','false'
+  ].join('|') +
+  ')\\b', 'g'
+);
+
+function highlightCode(escaped, lang) {
+  const store = [];
+  // sentinel-wrap each token so later passes don't double-process it
+  const stash = (cls, text) => {
+    store.push('<span class="tok-' + cls + '">' + text + '</span>');
+    return 'HLTOK' + (store.length - 1) + 'HLTOK';
+  };
+  let s = escaped;
+  // comments: /* block */, // line, # line
+  s = s.replace(/\/\*[\s\S]*?\*\//g, (m) => stash('comment', m));
+  s = s.replace(/(^|[^:])\/\/[^\n]*/g, (m, p) => p + stash('comment', m.slice(p.length)));
+  s = s.replace(/#[^\n]*/g, (m) => stash('comment', m));
+  // strings: ' " ` (allowing escaped chars inside)
+  s = s.replace(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g, (m) => stash('str', m));
+  // numbers
+  s = s.replace(/\b\d+(?:\.\d+)?\b/g, (m) => stash('num', m));
+  // keywords
+  s = s.replace(CODE_KEYWORDS, (m) => stash('kw', m));
+  // restore (match ONLY sentinel-wrapped indices)
+  s = s.replace(/HLTOK(\d+)HLTOK/g, (_, i) => store[+i]);
+  return s;
+}
 
 function inlineMd(s) {
   // inline code first, so its contents aren't touched by other rules
@@ -93,8 +137,16 @@ function renderMarkdown(src) {
       i++;
       while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) { buf.push(lines[i]); i++; }
       i++; // skip closing fence (if missing, we just consumed to EOF — fine mid-stream)
-      html += '<pre><code' + (lang ? ' class="lang-' + lang + '"' : '') + '>' +
-        buf.join('\n') + '</code></pre>';
+      const code = buf.join('\n'); // already HTML-escaped by escapeHtml()
+      const raw = encodeURIComponent(unescapeHtml(code)); // for the copy button
+      html +=
+        '<div class="codeblock">' +
+        '<div class="cb-head"><span class="cb-lang">' + (lang || 'code') + '</span>' +
+        '<button class="cb-copy" data-code="' + raw + '" title="Copy code">' +
+        '<svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button></div>' +
+        '<pre><code' + (lang ? ' class="lang-' + lang + '"' : '') + '>' +
+        highlightCode(code, lang) + '</code></pre>' +
+        '</div>';
       continue;
     }
 
@@ -465,7 +517,7 @@ async function addSkill() {
 // ---- UI events --------------------------------------------------------------
 function bindUI() {
   els.send.onclick = sendMessage;
-  els.stop.onclick = () => api.stopChat();
+  els.stop.onclick = stopGenerating;
   els.mic.onclick = toggleDictation;
 
   // macOS-style window controls (top-left) — each does something distinct
@@ -519,6 +571,18 @@ function bindUI() {
   api.onFocusInput(() => els.input.focus());
   api.onClearChat(clearChat);
 
+  // Delegated: copy buttons inside rendered code blocks.
+  els.messages.addEventListener('click', (e) => {
+    const btn = e.target.closest('.cb-copy');
+    if (!btn) return;
+    const code = decodeURIComponent(btn.dataset.code || '');
+    navigator.clipboard.writeText(code).then(() => {
+      btn.classList.add('ok');
+      btn.innerHTML = icon('i-check');
+      setTimeout(() => { btn.classList.remove('ok'); btn.innerHTML = icon('i-copy'); }, 1100);
+    });
+  });
+
   bindSettingsForm();
 }
 
@@ -536,22 +600,7 @@ function sendMessage() {
 
   history.push({ role: 'user', content: text });
   addMessage('user', text);
-
-  const messages = [{ role: 'system', content: composeSystemPrompt() }, ...history];
-  startAssistant();
-  setStreaming(true);
-
-  api
-    .sendChat({
-      provider: settings.provider,
-      model: settings.model,
-      messages,
-      thinking: settings.thinking,
-      temperature: settings.temperature
-    })
-    .then((res) => {
-      if (res && res.ok === false) toast(trimErr(res.error || 'Request failed'));
-    });
+  resend();
 }
 
 function bindStream() {
@@ -569,7 +618,10 @@ function bindStream() {
     scroll();
   });
   api.onDone(() => {
-    if (cur) history.push({ role: 'assistant', content: cur.content });
+    if (cur) {
+      history.push({ role: 'assistant', content: cur.content });
+      attachActions(cur.contentEl.closest('.msg'), 'assistant');
+    }
     finishStream();
     persistCurrentChat();
   });
@@ -603,6 +655,20 @@ function finishStream() {
   cur = null;
 }
 
+// User clicked Stop. Tell main to abort, and flip the UI out of the streaming
+// state immediately so the button never gets stuck waiting on the round-trip.
+function stopGenerating() {
+  if (!streaming) return;
+  api.stopChat();
+  if (cur) {
+    // keep whatever streamed so far as a finished message
+    history.push({ role: 'assistant', content: cur.content || '…' });
+    attachActions(cur.contentEl.closest('.msg'), 'assistant');
+  }
+  finishStream();
+  persistCurrentChat();
+}
+
 function startAssistant() {
   removeEmpty();
   const wrap = document.createElement('div');
@@ -625,7 +691,7 @@ function startAssistant() {
   els.messages.appendChild(wrap);
 
   cur = { contentEl: bubble, thinkEl: think, thinkBody, content: '', thinking: '' };
-  scroll();
+  scroll(true);
 }
 function revealThink() {
   if (cur && cur.thinkEl.classList.contains('hidden')) {
@@ -643,8 +709,104 @@ function addMessage(role, text) {
   bubble.className = 'bubble';
   bubble.textContent = text;
   wrap.appendChild(bubble);
+  attachActions(wrap, role);
   els.messages.appendChild(wrap);
-  scroll();
+  scroll(true);
+}
+
+// ---- Message actions (hover toolbar) ----------------------------------------
+// Index of a message wrapper among the .msg elements == its index in `history`.
+function msgIndex(wrap) {
+  return [...els.messages.querySelectorAll('.msg')].indexOf(wrap);
+}
+
+function attachActions(wrap, role) {
+  const bar = document.createElement('div');
+  bar.className = 'msg-actions';
+
+  const mkBtn = (iconId, title, fn) => {
+    const b = document.createElement('button');
+    b.className = 'msg-act';
+    b.title = title;
+    b.innerHTML = icon(iconId);
+    b.onclick = fn;
+    return b;
+  };
+
+  // Copy (both roles) — copies the message's raw text from history.
+  const copyBtn = mkBtn('i-copy', 'Copy', () => {
+    const i = msgIndex(wrap);
+    const text = (history[i] && history[i].content) || wrap.querySelector('.bubble').textContent;
+    navigator.clipboard.writeText(text).then(() => flashCopied(copyBtn));
+  });
+  bar.appendChild(copyBtn);
+
+  if (role === 'assistant') {
+    bar.appendChild(mkBtn('i-regen', 'Regenerate', () => regenerateFrom(wrap)));
+  } else {
+    bar.appendChild(mkBtn('i-edit', 'Edit & resend', () => editAndResend(wrap)));
+  }
+
+  wrap.appendChild(bar);
+}
+
+function flashCopied(btn) {
+  const prev = btn.innerHTML;
+  btn.innerHTML = icon('i-check');
+  btn.classList.add('ok');
+  setTimeout(() => { btn.innerHTML = prev; btn.classList.remove('ok'); }, 1100);
+}
+
+// Regenerate: drop this assistant message (and anything after), re-send the
+// conversation up to the preceding user turn.
+function regenerateFrom(wrap) {
+  if (streaming) return;
+  const i = msgIndex(wrap);
+  if (i < 0) return;
+  // truncate history to everything before this assistant message
+  history = history.slice(0, i);
+  // remove DOM from this message onward
+  truncateMessagesFrom(wrap);
+  resend();
+}
+
+// Edit & resend: put the user message back in the composer, truncate from it.
+function editAndResend(wrap) {
+  if (streaming) return;
+  const i = msgIndex(wrap);
+  if (i < 0) return;
+  const text = (history[i] && history[i].content) || '';
+  history = history.slice(0, i);
+  truncateMessagesFrom(wrap);
+  els.input.value = text;
+  autoGrow();
+  els.input.focus();
+}
+
+function truncateMessagesFrom(wrap) {
+  const msgs = [...els.messages.querySelectorAll('.msg')];
+  const start = msgs.indexOf(wrap);
+  if (start < 0) return;
+  for (let k = msgs.length - 1; k >= start; k--) msgs[k].remove();
+}
+
+// Re-send the current `history` to the model (used by regenerate).
+function resend() {
+  if (!history.length) return;
+  const messages = [{ role: 'system', content: composeSystemPrompt() }, ...history];
+  startAssistant();
+  setStreaming(true);
+  api
+    .sendChat({
+      provider: settings.provider,
+      model: settings.model,
+      messages,
+      thinking: settings.thinking,
+      temperature: settings.temperature
+    })
+    .then((res) => {
+      if (res && res.ok === false) toast(trimErr(res.error || 'Request failed'));
+    });
 }
 
 function clearChat() {
@@ -663,8 +825,12 @@ function removeEmpty() {
   const e = els.messages.querySelector('.empty');
   if (e) e.remove();
 }
-function scroll() {
-  els.messages.scrollTop = els.messages.scrollHeight;
+// Auto-scroll only when the user is already near the bottom, so scrolling up
+// to read earlier text mid-stream doesn't yank the view back down.
+function scroll(force) {
+  const el = els.messages;
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  if (force || nearBottom) el.scrollTop = el.scrollHeight;
 }
 
 // ---- Sidebar / chat history -------------------------------------------------
@@ -740,6 +906,7 @@ function renderAssistantStatic(content) {
   bubble.className = 'bubble';
   bubble.innerHTML = renderMarkdown(content);
   wrap.appendChild(bubble);
+  attachActions(wrap, 'assistant');
   els.messages.appendChild(wrap);
 }
 

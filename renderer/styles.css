@@ -254,14 +254,37 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
   background: rgba(0,0,0,0.32); padding: 1.5px 5px; border-radius: 5px;
   font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12px;
 }
-.msg.assistant .bubble pre {
-  background: rgba(0,0,0,0.4); padding: 11px 12px; border-radius: 10px;
-  overflow-x: auto; margin: 8px 0; border: 1px solid var(--border-soft);
+/* fenced code block with header (lang label + copy) */
+.msg.assistant .bubble .codeblock {
+  margin: 8px 0; border: 1px solid var(--border-soft); border-radius: 10px;
+  overflow: hidden; background: rgba(0,0,0,0.42);
+}
+.cb-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 6px 5px 11px; background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid var(--border-soft);
+}
+.cb-lang { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
+.cb-copy {
+  background: transparent; border: none; color: var(--faint);
+  width: 24px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+  transition: color .14s, background .14s;
+}
+.cb-copy svg { width: 13px; height: 13px; }
+.cb-copy:hover { color: var(--text); background: var(--panel-strong); }
+.cb-copy.ok { color: var(--accent); }
+.msg.assistant .bubble .codeblock pre {
+  margin: 0; padding: 11px 12px; overflow-x: auto; background: none; border: none;
 }
 .msg.assistant .bubble pre code {
-  background: none; padding: 0; font-size: 12px; line-height: 1.5;
+  background: none; padding: 0; font-size: 12px; line-height: 1.55;
   display: block; white-space: pre;
 }
+/* syntax highlight tokens */
+.tok-comment { color: #6b7280; font-style: italic; }
+.tok-str { color: #9ece6a; }
+.tok-num { color: #ff9e64; }
+.tok-kw { color: #8aa4ff; font-weight: 600; }
 .msg.assistant .bubble ul, .msg.assistant .bubble ol { margin: 6px 0; padding-left: 20px; }
 .msg.assistant .bubble li { margin: 3px 0; }
 .msg.assistant .bubble li::marker { color: var(--accent); }
@@ -281,6 +304,23 @@ button, select { font-family: inherit; color: var(--text); cursor: pointer; }
   animation: caret 1s steps(1) infinite;
 }
 @keyframes caret { 50% { opacity: 0; } }
+
+/* message action toolbar (dim by default, brightens on hover) */
+.msg { position: relative; }
+.msg-actions {
+  display: flex; gap: 2px; margin-top: 5px;
+  opacity: 0.4; transition: opacity .14s ease;
+}
+.msg.user .msg-actions { justify-content: flex-end; }
+.msg:hover .msg-actions { opacity: 1; }
+.msg-act {
+  background: transparent; border: 1px solid transparent; color: var(--muted);
+  width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center;
+  transition: color .14s, background .14s, border-color .14s;
+}
+.msg-act svg { width: 15px; height: 15px; }
+.msg-act:hover { color: var(--text); background: var(--panel-strong); border-color: var(--border); }
+.msg-act.ok { color: var(--accent); }
 
 /* thinking block */
 .think {
