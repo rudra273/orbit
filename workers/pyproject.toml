@@ -1,0 +1,13 @@
+[project]
+name = "orbit-workers"
+version = "0.0.1"
+description = "Orbit derivation workers: extraction, verification, consolidation."
+requires-python = ">=3.9"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["orbit_workers"]

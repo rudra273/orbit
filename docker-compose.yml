@@ -1,0 +1,20 @@
+# Local development database. A real deployment uses the same image or a managed PostgreSQL 18.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: orbit
+      POSTGRES_PASSWORD: orbit-dev-only
+      POSTGRES_DB: orbit
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - orbit-pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbit -d orbit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  orbit-pg:
