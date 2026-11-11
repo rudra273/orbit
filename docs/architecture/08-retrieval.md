@@ -125,7 +125,7 @@ Activation is computed with a local "push" method, which touches a number of edg
 
 ```python
 def spread(seeds, plan, mask, rho, eps):
-    p, r  = defaultdict(float), normalise(seeds)
+    p, r  = defaultdict(float), defaultdict(float, normalise(seeds))
     queue = deque(r)
     while queue:
         u = queue.popleft()
@@ -135,6 +135,7 @@ def spread(seeds, plan, mask, rho, eps):
         edges = [e for e in out_edges(u)
                  if mask.allows(e.dst) and e.valid_at(plan.as_of) and e.dst not in STOP_NODES]
         Z = sum(THETA[plan.intent][e.type] * e.weight * trust(e.dst) for e in edges)
+        if Z == 0: p[u] += flow; continue               # nowhere permitted to go: the activation stays here
         for e in edges:
             r[e.dst] += flow * THETA[plan.intent][e.type] * e.weight * trust(e.dst) / Z
             queue.append(e.dst)
