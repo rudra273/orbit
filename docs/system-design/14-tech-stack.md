@@ -21,7 +21,7 @@
 | Lexical search | **Tantivy** inside the recall engine (PostgreSQL full-text as fallback) | 1 | BM25 extensions in PostgreSQL; OpenSearch | Per-user indexes, code-aware tokenisers, no extra service |
 | Literal lookup | PostgreSQL trigram + exact indexes → finite-state dictionary in the image | 0 → 2 | — | Exact and typo-tolerant |
 | Graph | **Edge tables in PostgreSQL, projected to in-memory adjacency** | 2 | Neo4j, FalkorDB, Kuzu, Apache AGE | The graph is small per user and traversal wants memory locality; one source of truth |
-| Per-user index bundle | **Brain image** — Lance tables + custom graph file, *or* Tantivy + vector file + adjacency (decide by spike) | 4 | Qdrant with tenant partitioning; shared search cluster | Many-small-tenants regime; isolation; cost |
+| Retrieval index | In-process index in the engine: Tantivy + quantised vector file + in-memory adjacency, built from PostgreSQL. Per-user bundles on object storage only if a hosted service is ever built | 2 | Qdrant with tenant partitioning; shared search cluster | Many-small-tenants regime; isolation; cost |
 | Queue and workflow | PostgreSQL job table with per-user advisory locks → partitioned log + durable workflow engine | 0 → 4 | Kafka from day one | Fewer systems until volume requires them |
 | Working-memory cache | In-process, durable copy in PostgreSQL → Valkey/Redis | 1 → 4 | — | Small, hot, disposable |
 | Model access | **Internal model gateway** with tiers | 0 | Direct SDK calls scattered in code | Independence, budgets, logging, routing by sensitivity |
@@ -32,7 +32,7 @@
 | Android client | **Kotlin** + Rust core through generated bindings | 3 | — | Native UI, shared logic |
 | Web client | **TypeScript / React** | 3 | — | — |
 | Observability | **OpenTelemetry** → any backend | 0 | — | MCP now carries trace context; Logging is deprecated in MCP |
-| Infrastructure | Containers, infrastructure-as-code, cloud KMS; cloud-agnostic | 0 | — | — |
+| Infrastructure | **One deployment per brain in the owner's cloud**: containers on a single server (or a small managed stack), infrastructure-as-code, cloud KMS; cloud-agnostic | 0 | Shared multi-user fleet | Nobody else's data to hold; packaged later for others to deploy |
 
 ## 3. Languages, pragmatically
 

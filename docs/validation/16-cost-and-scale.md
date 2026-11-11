@@ -92,7 +92,11 @@ At generic public-cloud rates (object storage around $0.02 per GB-month; managed
 
 Model calls are 60–75% of the cost at every level. Everything else is small.
 
-## 8. At a million users
+**For a personal deployment** these per-user figures are the marginal costs, and a fixed cost is added: a server that is always on, a PostgreSQL instance and backups. The fixed part does not depend on usage and is likely to be the larger share for anyone but a heavy user. It should be measured on the chosen cloud in Phase 0; a brain this size does not need a large machine. Model usage is billed to the owner's own provider keys.
+
+## 8. At a million users — hosted service only, not the current plan
+
+Kept for reference. With one brain per deployment, none of this infrastructure is built.
 
 Assume 60% light, 35% typical, 5% heavy.
 

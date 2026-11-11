@@ -135,7 +135,11 @@ flowchart TB
 
 The key hierarchy and a `KeyProvider` abstraction are built from the start so that later stages are configuration, not redesign.
 
+**With one brain per deployment, the operator is the owner.** There is no vendor who could read the brain, and no other user to leak to. The parties still trusted are the cloud host the owner chose and the model providers the owner configured. Stages 2 and 3 above become relevant only if Orbit is ever offered as a hosted service; stage 1 controls (encryption at rest, keys in the cloud provider's KMS, backups under the owner's key) still apply, because the server is on the internet.
+
 ## 7. Tenant isolation
+
+In the current plan isolation is by deployment: each brain has its own server, database and keys. The controls below are kept as inexpensive seams and become load-bearing only in a hosted multi-user service.
 
 - Every table has `tenant_id`; **row-level security** is forced, and connections set the tenant from the verified token — application code cannot forget it.
 - **Index images are per tenant and physically separate**. There is no shared vector index, so an indexing bug cannot return another user's neighbours.

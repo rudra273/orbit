@@ -76,5 +76,5 @@ Ranked by how much of the outcome each one controls.
 ## 7. Assumptions this research rests on
 
 - The owner is one person; multi-user/team brains are a later extension of compartments and grants.
-- A cloud service may process plaintext to extract and index. If that is unacceptable, the confidential-computing and local-brain modes in [12-system-design](../system-design/12-system-design.md) apply, at a cost in capability or price.
+- Each brain runs as its own deployment in a cloud account its owner controls ([12 §8](../system-design/12-system-design.md#8-deployment-model-and-upgrade-path)). The owner is the operator, so nobody else holds the data; the remaining outside parties are the cloud host and whichever model providers are configured.
 - Small, cheap LLMs remain adequate for bulk extraction when their output is mechanically verified. If they are not, cost per user rises by roughly an order of magnitude ([16-cost-and-scale](../validation/16-cost-and-scale.md)).

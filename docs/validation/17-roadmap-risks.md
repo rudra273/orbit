@@ -8,7 +8,7 @@ Priorities follow the brief: the brain, then connectivity, then the interface, t
 
 ```mermaid
 flowchart LR
-  P0[0 Floor and yardstick] --> P1[1 Claims and beliefs] --> P2[2 Association, consolidation, projects] --> P4[4 Scale and hardening] --> P5[5 Autonomy]
+  P0[0 Floor and yardstick] --> P1[1 Claims and beliefs] --> P2[2 Association, consolidation, projects] --> P4[4 Self-hosted release] --> P5[5 Autonomy]
   P1 -. minimal UI .-> P3[3 Orbit UI and trust]
   P2 --> P3 --> P4
 ```
@@ -61,11 +61,21 @@ Memory explorer; knowledge-graph explorer; project dashboard; memory history; co
 
 **Exit:** a non-author can inspect, correct, export and delete without help.
 
-### Phase 4 — Scale and hardening
+### Phase 4 — Self-hosted release
 
-Cells and the tenant directory; brain images; partitioned event log; confidential-computing cells; multi-region; an external security review; a public benchmark report under the protocol in [15](15-evaluation.md).
+Everything up to here runs as the owner's own deployment in their cloud. This phase makes the same code deployable by someone else in theirs.
 
-**Exit:** OrbitBench at 100M tokens within gates · load tests at simulated fleet scale · security review closed.
+| Build | Detail |
+|---|---|
+| Packaging | One-command deploy; infrastructure-as-code for at least one cloud; container images |
+| Guided setup | Domain and TLS, owner login, model keys, first import |
+| Operations | Automatic schema migrations; versioned upgrades; scheduled backups; tested restore |
+| Hardening | External security review; secure defaults; update notifications |
+| Documentation | Install, operate, upgrade, recover |
+
+**Exit:** a second person deploys, imports their history, upgrades once and restores from backup without help · OrbitBench at 100M tokens within gates on a single deployment · security review closed.
+
+A hosted multi-user service (cells, per-user index bundles, confidential computing) is **not planned**. The seams that would make it an addition are listed in [12 §8](../system-design/12-system-design.md#8-deployment-model-and-upgrade-path).
 
 ### Phase 5 — Autonomy
 
@@ -108,7 +118,7 @@ Two properties of the memory design exist for this phase: an agent's own conclus
 | A model obeys injected text despite labels | Medium | Harmful action by a connected agent | Structural exclusion first; labels exported for client-side enforcement; grants bound damage | Injection suite attack success |
 | Heavy users or large imports blow the budget | Medium | Margin | Per-user budgets; tier downgrade under pressure; usage-aware pricing | Cost per user distribution |
 | MCP keeps changing; clients lag | High | Integration work | Thin protocol façade; compatibility layer for earlier revisions | Client compatibility matrix |
-| Legal exposure: third-party data, recordings, residency | Medium | Launch blocker in some regions | Legal review; conservative defaults; cells for residency | — |
+| Legal exposure: third-party data, recordings, residency | Medium | Launch blocker in some regions | Legal review before releasing to others; conservative defaults; each owner chooses their own region | — |
 | Overfitting to a self-made benchmark | Medium | False confidence | Held-out simulated worlds; public benchmarks; the dogfood set | Gap between OrbitBench and dogfood results |
 | One builder, large scope | High | Schedule | Phase 0 is small and useful alone; nothing in a later phase is needed to benefit from an earlier one | — |
 
@@ -118,7 +128,7 @@ Two properties of the memory design exist for this phase: an agent's own conclus
 - **Verification catches fabrication, not misinterpretation.** A claim can be anchored, entailed and still miss what the user meant. Corrections are the remedy.
 - **Abstention trades coverage for accuracy.** A system tuned to almost never invent will sometimes say "not found" about something it holds.
 - **Views are a little behind.** Minutes to a day, by design.
-- **At launch the service can read what it stores.** Stronger modes are staged ([11 §6](../architecture/11-security-privacy.md#6-encryption-and-keys)).
+- **The server reads what it stores.** In a personal deployment that server is the owner's; the cloud host and configured model providers are still trusted parties ([11 §6](../architecture/11-security-privacy.md#6-encryption-and-keys)).
 - **None of this has been built or measured.** The mechanisms marked *Hypothesis* are designs with tests attached; the numbers in [15](15-evaluation.md) and [16](16-cost-and-scale.md) are targets and estimates.
 
 ## 5. Unresolved research questions
@@ -142,7 +152,7 @@ Two properties of the memory design exist for this phase: an agent's own conclus
 | Decision | Default assumed in these documents |
 |---|---|
 | Engine language | Rust, with Python for model pipelines |
-| Where the brain lives first | Cloud, with the local-brain mode kept working from Phase 0 |
+| Where the brain lives | **Decided:** the owner's own cloud deployment, one brain per deployment; later, others deploy the same code in their cloud |
 | Which clients to integrate first | The two agents used most, by hooks; then MCP broadly |
-| Confidentiality at launch | Stage 1 (service-side encryption, per-tenant keys), designed for stage 2 |
-| Who the first users are | The owner alone until Phase 1 exits |
+| Confidentiality | The owner operates the deployment; encryption at rest with keys in the owner's cloud KMS |
+| Who the users are | **Decided:** the owner alone until it fully works; then self-hosters |

@@ -23,7 +23,7 @@ erDiagram
 
 ## 2. Conventions
 
-- Every table has `tenant_id`; row-level security is forced on all of them.
+- Every table has `tenant_id`; row-level security is forced on all of them. With one brain per deployment it holds a single constant value; it is kept so that a multi-user service would be an addition, not a migration.
 - Ids are UUIDv7 (time-ordered), shown to clients with a type prefix: `ev_`, `src_`, `ep_`, `cl_`, `bl_`, `en_`, `lt_`, `vw_`, `ctx_`, `gr_`.
 - Every derived row carries `derivation_id`: which engine version, model and prompt produced it.
 - Time: `occurred_at` / `asserted_at` / `valid` are **event or valid time**; `recorded_at` / `believed` are **system time**.

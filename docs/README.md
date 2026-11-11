@@ -4,6 +4,8 @@ Research, architecture and system design for Orbit's memory: a persistent, human
 
 > **Status: design, not yet built.** Nothing here has been implemented or measured. Mechanisms marked *Hypothesis* are original proposals with a test attached; figures in the evaluation and cost documents are targets and estimates. Research pass dated 2026-11-11.
 
+> **Deployment decision (2026-11-11).** Orbit is built first for its owner alone: **one brain per deployment, running in the owner's own cloud**. When it works, others get the same codebase to deploy in their cloud. A hosted service holding many people's brains is not planned for now. No memory feature is reduced for this; only fleet infrastructure is deferred. See [12 §8](system-design/12-system-design.md#8-deployment-model-and-upgrade-path).
+
 ## The design in one page
 
 **The problem.** Today each AI keeps its own shallow, lossy, unverifiable memory. Existing memory frameworks improve on that but share three weaknesses: they *extract and discard* (so extraction errors are permanent), they *cannot tell what was said from what they concluded*, and they have *no model of trust* for a memory that many programs read and write.
@@ -28,7 +30,7 @@ Research, architecture and system design for Orbit's memory: a persistent, human
 7. **Recall by resonance.** Seven retrieval channels in parallel, activation spreading over a typed memory graph, then a grounding gate that verifies against evidence and returns one of four verdicts — including *not found*.
 8. **Forgetting is ranking.** Decay changes what surfaces first; nothing is destroyed except by the owner.
 9. **One brain, many clients, each with a grant.** MCP is the primary interface (written against the stateless 2026-07-28 specification), backed by a REST API, capture connectors and an optional LLM gateway. Every client sees only what its grant allows, and every disclosure is logged.
-10. **PostgreSQL is the record; everything else is a projection.** One writer per brain; one in-memory index bundle per brain; scale by adding cells.
+10. **PostgreSQL is the record; everything else is a projection.** One writer per brain; one in-memory index per brain; one brain per deployment, in the owner's cloud.
 
 **What is new, and what is borrowed.**
 

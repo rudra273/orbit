@@ -1,6 +1,6 @@
 # 12 · System design
 
-> **What this document decides:** the services, the data flows, how concurrent writes stay consistent, how devices sync, and how the system grows from one user to millions. Schemas are in [13](13-data-model.md); technology choices in [14](14-tech-stack.md).
+> **What this document decides:** the services, the data flows, how concurrent writes stay consistent, how devices sync, and how one deployment serves one brain in the owner's cloud while staying upgradeable. Schemas are in [13](13-data-model.md); technology choices in [14](14-tech-stack.md).
 
 ## 1. Overview
 
@@ -16,7 +16,7 @@ flowchart TB
   EDGE[Edge<br/>TLS · token check · rate limits · tenant routing]
   AUTH[Auth + grants]
 
-  subgraph CELL[Cell — one of many]
+  subgraph CELL["One deployment — one brain, in the owner's cloud"]
     API[MCP + REST handlers<br/>stateless]
     ING[Ingest]
     BA[Brain actors<br/>one writer per user]
@@ -57,7 +57,7 @@ Three ideas organise it:
 
 | Component | Responsibility | State |
 |---|---|---|
-| **Edge** | TLS, token validation, rate limiting, routing a user to their cell | None |
+| **Edge** | TLS, token validation, rate limiting | None |
 | **Auth + grants** | OAuth 2.1 / OIDC authorization server; passkeys; client registration; consent and grant management | Own database |
 | **MCP + REST handlers** | Protocol translation; grant → policy mask; request validation | None |
 | **Ingest** | Admission (validate, redact secrets, label), ledger append, outbox | Writes PostgreSQL |
@@ -134,6 +134,8 @@ No model is called on the fast path apart from one embedding. The disclosure rec
 
 ## 5. Brain image
 
+> **In a single-brain deployment** the image is simply the server's own retrieval index: built from PostgreSQL, kept on local disk, held in memory, and rebuilt on demand. The parts below about per-user bundles, object storage, eviction and cold start matter only for a hosted multi-user service (stage 3 in [§8](#8-deployment-model-and-upgrade-path)). The contents and the freshness rule apply either way.
+
 A brain image is the per-user, read-optimised bundle of everything retrieval needs:
 
 | Part | Contents |
@@ -201,27 +203,52 @@ CRDT libraries were considered and are unnecessary here: there is no shared muta
 
 Offline, the local replica answers lexical and small-scale vector queries over its subset using the same engine compiled for the device.
 
-## 8. Multi-tenancy and scale
+## 8. Deployment model and upgrade path
 
-```mermaid
-flowchart LR
-  G[Global edge] --> D[(Tenant directory<br/>user → cell, region)]
-  D --> C1[Cell eu-1]
-  D --> C2[Cell us-1]
-  D --> C3[Cell us-2]
-```
+**Decision (2026-11-11).** Orbit is built first for its owner alone: one brain per deployment, running on a cloud server the owner controls, so that every device and every AI client can reach it. Once it works, others receive the same codebase and deploy it in their own cloud. A hosted service holding many people's brains is not planned for now, because holding other people's memories safely is a harder problem than building the memory.
 
-A **cell** is a complete, independent deployment — handlers, actors, workers, recall nodes, PostgreSQL, object storage — serving a bounded number of users. A global directory maps each user to a cell. Cells limit blast radius, make capacity planning linear, and give data residency by construction.
+**No memory feature is reduced by this.** Everything in documents 05–11 is unchanged. What is deferred is fleet infrastructure only.
 
-| Stage | Users | Shape |
+| Stage | Who | Shape |
 |---|---|---|
-| A | 1 – 10³ | One region. One PostgreSQL. Two deployables. Retrieval over PostgreSQL indexes |
-| B | 10³ – 10⁵ | Cells. Brain images on object storage; stateless recall nodes with NVMe cache. Partitioned event log |
-| C | 10⁵ – 10⁶⁺ | Many cells; hot / warm / cold users (idle images evicted; cold ledgers archived to columnar files in object storage); dedicated cells for very large brains or enterprise; confidential-computing cells |
+| **1 Personal** | The owner | One cloud deployment: engine, workers, PostgreSQL, an object-storage bucket. Retrieval indexes live in the engine process |
+| **2 Self-hosted release** | Anyone, each in their own cloud account | The same code, packaged: one-command deploy, guided setup (domain, login, model keys), automatic migrations, backup and restore, upgrade path |
+| **3 Hosted multi-user** — optional, not planned | Many people on shared infrastructure | Cells, a directory mapping users to cells, per-user index bundles on object storage, confidential computing |
 
-What makes this tractable is that **users do not interact**. There are no cross-tenant queries, so nothing needs a distributed transaction or a global index; scaling is adding cells.
+### What one deployment contains
+
+| Part | Runs as |
+|---|---|
+| Engine: API, MCP, ingest, brain actor, recall, indexer, sync | One process |
+| Derivation workers | One worker pool |
+| PostgreSQL | One instance (managed or on the same host), with point-in-time backups |
+| Object storage | One bucket: large evidence bodies, exports, backups |
+| Auth | The bundled authorization server, with the owner as the only user |
+| Secrets vault | A separate store and key |
+| Model access | The owner's own provider keys, or a self-hosted model |
+
+A decade of one heavy user's memory is single-digit gigabytes ([16](../validation/16-cost-and-scale.md)), so one modest server is enough and there is a great deal of vertical headroom. Scaling a personal brain means a larger machine, not a distributed system.
+
+### Seams kept so an upgrade is additive
+
+Each costs almost nothing now and avoids a rewrite later.
+
+| Seam | Now | If stage 3 ever happens |
+|---|---|---|
+| `tenant_id` on every table, with row-level security | One constant value | Many values |
+| OAuth login and per-client grants | Needed anyway: Claude, Codex and ChatGPT are separate clients with different grants | Unchanged |
+| Retrieval behind the `RecallIndex` interface | In-process index over PostgreSQL | Per-user images on object storage |
+| Keys behind a `KeyProvider` | One owner key in the cloud provider's KMS | Per-user keys; attested workloads |
+| One writer per brain | The only writer | One per user, partitioned |
+| Export bundle | Backup, and moving a brain between deployments | Onboarding and offboarding |
+
+### What the owner of a deployment is responsible for
+
+Self-hosting moves trust from a vendor to the owner, and with it some duties: keeping the server patched, protecting the domain and login, holding the backup and encryption keys, and paying for the server and for model usage. Stage 2 exists to make these as close to automatic as possible.
 
 ## 9. Local brain mode
+
+A secondary mode. The deployment Orbit is designed around is a cloud server; this section describes running the same engine on a single machine.
 
 Because the engine is a library and the source of truth is a log, the same code can run on one machine: SQLite in place of PostgreSQL, the image on local disk, local models through the gateway. This serves development, privacy-maximal users, and offline use. Extraction quality depends on the local model; everything mechanical — the ledger, anchors, exact recall, revision, retrieval — is identical. A local brain can later be uploaded to the cloud, or a cloud brain exported to run locally, since both are the same bundle ([11 §9](../architecture/11-security-privacy.md#9-ownership-inspect-correct-export-delete)).
 
@@ -256,6 +283,6 @@ OpenTelemetry traces end to end, propagating the trace context MCP now carries i
 | Log + projections | Mutable primary state | Re-derivation, audit, deletion, model independence | Projection lag; more storage | Replay equals live state |
 | Single writer per user | Optimistic concurrency on beliefs; CRDTs | Simple, serialisable, no merge logic | Per-user throughput ceiling (ample for one person) | Concurrent-client tests |
 | Per-user brain image | Shared vector DB + graph DB + search cluster | Locality, isolation, cost at many small tenants | Custom indexing work | Latency and cost at simulated scale |
-| Cells | One large shared cluster | Blast radius, residency, linear growth | Directory and fleet tooling | Cell failover drill |
+| One brain per deployment, in the owner's cloud | A hosted service for many users | Nobody else's data to protect; simplest operations; strongest privacy; no feature cut | Each owner runs a server | Fresh-install, upgrade and restore drills |
 | Server computes derived state; devices hold replicas | Local-first with merge | One revision engine; consistent results | Needs connectivity for full recall | Offline scenarios |
 | PostgreSQL first, images later | Build images from day one | Time to a working system | A migration later (behind an interface) | Same suites pass on both backends |
