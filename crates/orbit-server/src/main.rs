@@ -10,11 +10,14 @@ mod mcp;
 mod routes;
 
 use anyhow::Context;
-use orbit_embed::{Embedder, OpenRouter};
+use orbit_embed::{Embedder, OpenRouter, QueryCache};
 use orbit_index::{DenseIndexer, RawIndexer};
 use orbit_ledger::{Ledger, MIGRATOR};
 use orbit_recall::Recall;
 use std::sync::Arc;
+
+/// Distinct query vectors kept in memory (~16 KB each at 4096 dimensions).
+const QUERY_CACHE: usize = 2_048;
 
 /// Everything request handlers share.
 pub struct AppState {
@@ -37,7 +40,10 @@ async fn main() -> anyhow::Result<()> {
 
     let embedder: Option<Arc<dyn Embedder>> = match &config.embedding {
         Some(embedding) => {
-            let embedder: Arc<dyn Embedder> = Arc::new(OpenRouter::new(embedding.openrouter_key.clone())?);
+            let embedder: Arc<dyn Embedder> = Arc::new(OpenRouter::new(
+                embedding.openrouter_key.clone(),
+                embedding.providers.clone(),
+            )?);
             let indexer = DenseIndexer::new(
                 pool.clone(),
                 config.tenant_id,
@@ -50,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
                 .context("cannot register the embedding space")?;
             tracing::info!(space = %embedding.space.id, ?state, "dense channel on");
             tokio::spawn(indexing::dense(indexer));
-            Some(embedder)
+            Some(Arc::new(QueryCache::new(embedder, QUERY_CACHE)) as Arc<dyn Embedder>)
         }
         None => {
             tracing::warn!("OPENROUTER_API_KEY is not set: dense channel off, search is by words only");

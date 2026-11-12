@@ -324,3 +324,47 @@ async fn a_new_space_takes_over_only_after_catching_up(pool: PgPool) {
     );
     assert!(changed.register().await.is_err(), "a space's settings never change");
 }
+
+#[sqlx::test(migrator = "orbit_ledger::MIGRATOR")]
+#[ignore = "needs PostgreSQL"]
+async fn text_that_is_never_embedded_is_still_found_by_its_words(pool: PgPool) {
+    append(
+        &pool,
+        "c-1",
+        &[
+            said(
+                AuthorRole::User,
+                "We deploy the staging environment with blue-green releases every Friday",
+            ),
+            said(
+                AuthorRole::User,
+                "The team lunch is at the noodle place near the station on Thursdays",
+            ),
+            Turn {
+                author: AuthorRole::User,
+                author_ref: None,
+                sensitivity: Sensitivity::Sensitive,
+                text: "The wallet recovery phrase is written in the green notebook".into(),
+            },
+        ],
+    )
+    .await;
+    let space = space(256);
+    index(&pool, &space).await;
+    let embedder: Arc<dyn Embedder> = Arc::new(WordHash);
+    let recall = Recall::new(pool.clone(), TENANT, Some(embedder));
+
+    let result = recall
+        .search(&SearchRequest {
+            query: "where is the wallet recovery phrase".into(),
+            limit: 1,
+            include_tool_activity: false,
+        })
+        .await
+        .unwrap();
+    assert!(
+        result.hits[0].text.contains("green notebook"),
+        "ranked first, not buried below matches by meaning"
+    );
+    assert_eq!(result.hits[0].matched_by, vec![Channel::Lexical]);
+}

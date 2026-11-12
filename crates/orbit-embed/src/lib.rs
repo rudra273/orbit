@@ -4,11 +4,13 @@
 //! A [`Space`] fixes everything that makes two vectors comparable — model, size and the prefixes
 //! put in front of queries and documents — and an [`Embedder`] turns text into vectors of a space.
 
+mod cache;
 mod openrouter;
 mod space;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
+pub use cache::QueryCache;
 pub use openrouter::OpenRouter;
 pub use space::Space;
 
@@ -28,6 +30,8 @@ pub enum EmbedError {
     Transport(#[from] reqwest::Error),
     #[error("embedding provider answered {status}: {body}")]
     Provider { status: u16, body: String },
+    #[error("no embedding provider answered in time")]
+    Timeout,
     #[error("embedding provider returned {got} vectors for {asked} inputs")]
     Count { asked: usize, got: usize },
     #[error("model returned {got} dimensions; space {space} needs at least {needs}")]

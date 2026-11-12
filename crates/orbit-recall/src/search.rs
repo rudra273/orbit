@@ -2,8 +2,11 @@
 //!
 //! Fusion is reciprocal-rank (k = 60) with the lexical channel at 0.1 of the dense weight: on the
 //! owner's history, equal weights lowered accuracy and 0.1 matched or beat dense alone
-//! (evals/embed-bench). Without an embedder or an active embedding space, or when the provider
-//! fails, search is lexical only and says so in `channels`.
+//! (evals/embed-bench). The lower weight applies only where both channels could see the evidence:
+//! text that is never embedded (labelled `sensitive`, very short, tool activity) is ranked by the
+//! lexical channel alone at full weight, or it would sink below every match by meaning. Without
+//! an embedder or an active embedding space, or when the provider fails, search is lexical only
+//! and says so in `channels`.
 
 use crate::{Recall, RecallError, Verdict, text::clip};
 use chrono::{DateTime, Utc};
@@ -86,12 +89,23 @@ struct DenseHit {
     end: usize,
 }
 
+/// What the dense channel returned, and from which space.
+struct DenseRun {
+    hits: Vec<(Uuid, DenseHit)>,
+    space_id: String,
+}
+
 impl Recall {
     /// Ranked search: by meaning when an embedding space is active, and by words, fused.
     pub async fn search(&self, request: &SearchRequest) -> Result<SearchResult, RecallError> {
         let limit = request.limit.clamp(1, MAX_LIMIT) as usize;
         let lexical = self.lexical(request).await?;
         let dense = self.dense(&request.query).await?;
+        let embedded = match &dense {
+            Some(run) => self.embedded(&run.space_id, &lexical).await?,
+            None => Default::default(),
+        };
+        let dense = dense.map(|run| run.hits);
 
         let mut channels = Vec::new();
         let mut fused: HashMap<Uuid, f64> = HashMap::new();
@@ -102,12 +116,17 @@ impl Recall {
             }
         }
         channels.push(Channel::Lexical);
-        let lexical_weight = if dense.is_some() { LEXICAL_WEIGHT } else { 1.0 };
         for (rank, id) in lexical.iter().enumerate() {
-            *fused.entry(*id).or_default() += lexical_weight / (RRF_K + rank as f64 + 1.0);
+            let weight = if embedded.contains(id) { LEXICAL_WEIGHT } else { 1.0 };
+            *fused.entry(*id).or_default() += weight / (RRF_K + rank as f64 + 1.0);
         }
         let mut ranked: Vec<(Uuid, f64)> = fused.into_iter().collect();
-        ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        // On a tie, a hit that shares the query's words (grounded) goes first.
+        ranked.sort_by(|a, b| {
+            b.1.total_cmp(&a.1)
+                .then(lexical.contains(&b.0).cmp(&lexical.contains(&a.0)))
+                .then(a.0.cmp(&b.0))
+        });
         ranked.truncate(limit);
 
         let dense_hits: HashMap<Uuid, DenseHit> = dense.unwrap_or_default().into_iter().collect();
@@ -145,8 +164,24 @@ impl Recall {
         Ok(ids)
     }
 
-    /// Evidence ranked by meaning, each with its best chunk; `None` when the channel cannot run.
-    async fn dense(&self, query: &str) -> Result<Option<Vec<(Uuid, DenseHit)>>, RecallError> {
+    /// Which of `ids` the dense channel can see in a space.
+    async fn embedded(&self, space_id: &str, ids: &[Uuid]) -> Result<std::collections::HashSet<Uuid>, RecallError> {
+        let mut tx = self.begin().await?;
+        let rows: Vec<Uuid> = sqlx::query_scalar(
+            "select distinct evidence_id from evidence_embedding
+             where tenant_id = $1 and space_id = $2 and evidence_id = any($3)",
+        )
+        .bind(self.tenant_id)
+        .bind(space_id)
+        .bind(ids)
+        .fetch_all(&mut *tx)
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
+
+    /// Evidence ranked by meaning, each with its best chunk, and the space searched; `None` when
+    /// the channel cannot run.
+    async fn dense(&self, query: &str) -> Result<Option<DenseRun>, RecallError> {
         let Some(embedder) = &self.embedder else {
             return Ok(None);
         };
@@ -205,7 +240,10 @@ impl Recall {
                 )
             })
             .collect();
-        Ok(Some(ranked))
+        Ok(Some(DenseRun {
+            hits: ranked,
+            space_id: space.id,
+        }))
     }
 
     async fn active_space(&self) -> Result<Option<Space>, RecallError> {

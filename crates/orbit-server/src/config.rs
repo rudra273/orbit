@@ -21,11 +21,15 @@ pub struct Config {
 /// Which embedding space to build and search, and the key for its provider.
 pub struct Embedding {
     pub openrouter_key: String,
+    /// OpenRouter provider slugs: documents use the first that is up, queries race them all.
+    pub providers: Vec<String>,
     pub space: Space,
 }
 
 const DEFAULT_EMBED_MODEL: &str = "qwen/qwen3-embedding-8b";
 const DEFAULT_EMBED_DIMS: usize = 4096;
+/// The two fastest providers of Qwen3-Embedding-8B on OpenRouter when measured (2026-11-13).
+const DEFAULT_EMBED_PROVIDERS: &str = "deepinfra,nebius";
 
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
@@ -52,6 +56,7 @@ impl Config {
 
 /// `OPENROUTER_API_KEY` turns the dense channel on. `ORBIT_EMBED_MODEL` and `ORBIT_EMBED_DIMS` pick
 /// the space; changing either builds a new space in the background (see orbit-index `dense`).
+/// `ORBIT_EMBED_PROVIDERS` lists OpenRouter providers; empty lets OpenRouter choose.
 fn embedding() -> anyhow::Result<Option<Embedding>> {
     let Some(key) = env::var("OPENROUTER_API_KEY").ok().filter(|k| !k.trim().is_empty()) else {
         return Ok(None);
@@ -65,8 +70,15 @@ fn embedding() -> anyhow::Result<Option<Embedding>> {
         (1..=16_000).contains(&dims),
         "ORBIT_EMBED_DIMS must be between 1 and 16000"
     );
+    let providers = env::var("ORBIT_EMBED_PROVIDERS")
+        .unwrap_or_else(|_| DEFAULT_EMBED_PROVIDERS.to_string())
+        .split(',')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
     Ok(Some(Embedding {
         openrouter_key: key.trim().to_string(),
+        providers,
         space: Space::hosted(&model, dims),
     }))
 }
