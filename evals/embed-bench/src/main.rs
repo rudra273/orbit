@@ -5,70 +5,118 @@
 //! - **question → answer**: a question the user asked; the assistant's next reply is the answer.
 //!
 //! Compared: PostgreSQL full-text (today's Orbit), BM25, each embedding model, and BM25 + model
-//! fused by reciprocal rank. Read-only against the database.
+//! fused by reciprocal rank. Scores carry 95% bootstrap intervals. Read-only against the database.
 
+mod api;
 mod data;
 mod dense;
+mod gemma2;
 mod lexical;
 mod metrics;
+mod validate;
 
-use clap::Parser;
-use std::time::Instant;
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(long, env = "DATABASE_URL")]
-    database_url: String,
-    #[arg(long, env = "ORBIT_TENANT_ID")]
-    tenant_id: uuid::Uuid,
-    /// Documents in the corpus: every answer document, plus sampled distractors.
-    #[arg(long, default_value_t = 6000)]
-    docs: usize,
-    /// Question → answer queries to sample.
-    #[arg(long, default_value_t = 300)]
-    questions: usize,
-    /// Models to run, comma-separated (see `dense::MODELS`).
-    #[arg(long, value_delimiter = ',', default_value = "minilm,nomic-v1.5,gemma-300m,bge-m3,qwen3-0.6b")]
-    models: Vec<String>,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Check the ONNX embedder against reference vectors from Google's implementation.
+    Validate {
+        #[arg(long)]
+        gemma_dir: PathBuf,
+        #[arg(long)]
+        reference: PathBuf,
+    },
+    /// Run the retrieval benchmark.
+    Run {
+        #[arg(long, env = "DATABASE_URL")]
+        database_url: String,
+        #[arg(long, env = "ORBIT_TENANT_ID")]
+        tenant_id: uuid::Uuid,
+        #[arg(long)]
+        gemma_dir: Option<PathBuf>,
+        /// EmbeddingGemma 2 ONNX files to test, comma-separated (e.g. model_quantized.onnx).
+        #[arg(long, value_delimiter = ',')]
+        files: Vec<String>,
+        /// OpenRouter embedding models to test, comma-separated (needs OPENROUTER_API_KEY).
+        #[arg(long, value_delimiter = ',')]
+        api_models: Vec<String>,
+        /// Vector sizes to score API models at (Matryoshka truncation), comma-separated; default: full size.
+        #[arg(long, value_delimiter = ',')]
+        dims: Vec<usize>,
+        /// Lexical weights to fuse with each API run (dense weight 1), comma-separated.
+        #[arg(long, value_delimiter = ',')]
+        fusion_weights: Vec<f64>,
+        #[arg(long, default_value_t = 6000)]
+        docs: usize,
+        #[arg(long, default_value_t = 300)]
+        questions: usize,
+        #[arg(long, default_value_t = 512)]
+        max_tokens: usize,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
-    let pool = sqlx::PgPool::connect(&args.database_url).await?;
-    let bench = data::load(&pool, args.tenant_id, args.docs, args.questions).await?;
-    println!(
-        "corpus {} docs · {} title queries · {} question queries",
-        bench.docs.len(),
-        bench.tasks[0].queries.len(),
-        bench.tasks[1].queries.len()
-    );
-
-    let mut rankings: Vec<(String, Vec<metrics::Ranked>, Option<f64>)> = Vec::new();
-    rankings.push(("postgres-fts (current)".into(), lexical::postgres(&pool, args.tenant_id, &bench).await?, None));
-    let bm25 = lexical::bm25(&bench);
-    rankings.push(("bm25".into(), bm25.clone(), None));
-
-    for name in args.models.iter().filter(|m| !m.is_empty()) {
-        let spec = dense::spec(name)?;
-        let start = Instant::now();
-        let ranked = dense::rank(&spec, &bench)?;
-        let docs_per_sec = bench.docs.len() as f64 / start.elapsed().as_secs_f64();
-        rankings.push((format!("{name} ({}d)", ranked.dims), ranked.lists.clone(), Some(docs_per_sec)));
-        rankings.push((format!("bm25 + {name}"), metrics::fuse(&bm25, &ranked.lists), None));
+    match Args::parse().command {
+        Command::Validate { gemma_dir, reference } => validate::run(&gemma_dir, &reference),
+        Command::Run {
+            database_url,
+            tenant_id,
+            gemma_dir,
+            files,
+            api_models,
+            dims,
+            fusion_weights,
+            docs,
+            questions,
+            max_tokens,
+        } => {
+            let pool = sqlx::PgPool::connect(&database_url).await?;
+            let bench = data::load(&pool, tenant_id, docs, questions).await?;
+            println!(
+                "corpus {} docs · {} title queries · {} question queries\n",
+                bench.docs.len(),
+                bench.tasks[0].queries.len(),
+                bench.tasks[1].queries.len()
+            );
+            metrics::header(&bench);
+            let fts = lexical::postgres(&pool, tenant_id, &bench).await?;
+            metrics::row(&bench, "postgres-fts (current Orbit)", &fts, None);
+            let bm25 = lexical::bm25(&bench);
+            metrics::row(&bench, "bm25", &bm25, None);
+            for file in files.iter().filter(|f| !f.is_empty()) {
+                let dir = gemma_dir
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("--gemma-dir is needed with --files"))?;
+                let run = dense::gemma2(dir, file, max_tokens, &bench)?;
+                let name = format!("gemma2 {file} ({}d)", run.dims);
+                metrics::row(&bench, &name, &run.lists, Some(run.docs_per_sec));
+                metrics::row(
+                    &bench,
+                    &format!("bm25 + gemma2 {file}"),
+                    &metrics::fuse(&bm25, &run.lists),
+                    None,
+                );
+            }
+            for model in api_models.iter().filter(|m| !m.is_empty()) {
+                for (name, run) in dense::api(model, &dims, &bench).await? {
+                    metrics::row(&bench, &name, &run.lists, Some(run.docs_per_sec));
+                    for w in fusion_weights.iter().copied().filter(|_| !name.contains("1-bit")) {
+                        let fused = metrics::fuse_weighted(&run.lists, 1.0, &bm25, w);
+                        metrics::row(&bench, &format!("  + bm25 ×{w}"), &fused, None);
+                        let fused = metrics::fuse_weighted(&run.lists, 1.0, &fts, w);
+                        metrics::row(&bench, &format!("  + postgres-fts ×{w}"), &fused, None);
+                    }
+                }
+            }
+            Ok(())
+        }
     }
-
-    let [a_name, b_name] = [bench.tasks[0].name, bench.tasks[1].name];
-    println!("\n| method | {a_name} hit@5 | MRR | {b_name} hit@5 | hit@10 | MRR | docs/s |");
-    println!("|---|---:|---:|---:|---:|---:|---:|");
-    for (name, ranked, speed) in &rankings {
-        let a = metrics::score(&bench.tasks[0], &ranked[0]);
-        let b = metrics::score(&bench.tasks[1], &ranked[1]);
-        let speed = speed.map_or("–".to_string(), |s| format!("{s:.0}"));
-        println!(
-            "| {name} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} | {speed} |",
-            a.hit5, a.mrr, b.hit5, b.hit10, b.mrr
-        );
-    }
-    Ok(())
 }

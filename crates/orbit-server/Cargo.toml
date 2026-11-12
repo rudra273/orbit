@@ -5,6 +5,7 @@ edition.workspace = true
 publish.workspace = true
 
 [dependencies]
+orbit-embed.workspace = true
 orbit-index.workspace = true
 orbit-ledger.workspace = true
 orbit-recall.workspace = true

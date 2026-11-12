@@ -53,8 +53,18 @@ pub async fn load(pool: &PgPool, tenant: Uuid, max_docs: usize, max_questions: u
         let (q, a) = (&w[0], &w[1]);
         let qt = String::from_utf8_lossy(&q.4);
         let plain = !qt.trim_start().starts_with('<');
-        if q.3 == "user" && a.3 == "assistant" && q.1 == a.1 && plain && qt.contains('?') && (20..=400).contains(&qt.len()) {
-            questions.push(Query { text: qt.trim().to_string(), relevant: HashSet::from([a.0]), exclude: Some(q.0) });
+        if q.3 == "user"
+            && a.3 == "assistant"
+            && q.1 == a.1
+            && plain
+            && qt.contains('?')
+            && (20..=400).contains(&qt.len())
+        {
+            questions.push(Query {
+                text: qt.trim().to_string(),
+                relevant: HashSet::from([a.0]),
+                exclude: Some(q.0),
+            });
         }
     }
     questions.sort_by_key(|q| stable_hash(&q.text));
@@ -64,12 +74,19 @@ pub async fn load(pool: &PgPool, tenant: Uuid, max_docs: usize, max_questions: u
     let mut by_source: HashMap<Uuid, (String, Vec<Uuid>)> = HashMap::new();
     for r in &rows {
         if let Some(title) = &r.5 {
-            by_source.entry(r.1).or_insert_with(|| (title.clone(), Vec::new())).1.push(r.0);
+            by_source
+                .entry(r.1)
+                .or_insert_with(|| (title.clone(), Vec::new()))
+                .1
+                .push(r.0);
         }
     }
 
     // Corpus: every relevant document, then deterministic distractors up to the limit.
-    let mut keep: HashSet<Uuid> = questions.iter().flat_map(|q| q.relevant.iter().chain(q.exclude.iter()).copied()).collect();
+    let mut keep: HashSet<Uuid> = questions
+        .iter()
+        .flat_map(|q| q.relevant.iter().chain(q.exclude.iter()).copied())
+        .collect();
     let mut others: Vec<&Row> = rows.iter().filter(|r| !keep.contains(&r.0)).collect();
     others.sort_by_key(|r| stable_hash(&r.0.to_string()));
     for r in others {
@@ -78,24 +95,46 @@ pub async fn load(pool: &PgPool, tenant: Uuid, max_docs: usize, max_questions: u
         }
         keep.insert(r.0);
     }
-    let docs: Vec<Doc> = rows.iter().filter(|r| keep.contains(&r.0)).map(|r| Doc { id: r.0, text: text(&r.4) }).collect();
+    let docs: Vec<Doc> = rows
+        .iter()
+        .filter(|r| keep.contains(&r.0))
+        .map(|r| Doc {
+            id: r.0,
+            text: text(&r.4),
+        })
+        .collect();
 
     let mut titles: Vec<Query> = by_source
         .into_values()
         .filter_map(|(title, ids)| {
             let relevant: HashSet<Uuid> = ids.into_iter().filter(|id| keep.contains(id)).collect();
-            (!relevant.is_empty()).then_some(Query { text: title, relevant, exclude: None })
+            (!relevant.is_empty()).then_some(Query {
+                text: title,
+                relevant,
+                exclude: None,
+            })
         })
         .collect();
     titles.sort_by_key(|q| stable_hash(&q.text));
 
     Ok(Bench {
         docs,
-        tasks: [Task { name: "title→session", queries: titles }, Task { name: "question→answer", queries: questions }],
+        tasks: [
+            Task {
+                name: "title→session",
+                queries: titles,
+            },
+            Task {
+                name: "question→answer",
+                queries: questions,
+            },
+        ],
     })
 }
 
 /// FNV-1a: a fixed, seedless order for sampling.
 pub fn stable_hash(s: &str) -> u64 {
-    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
+    s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+    })
 }

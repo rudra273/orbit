@@ -6,8 +6,11 @@ publish.workspace = true
 
 [dependencies]
 orbit-core.workspace = true
+orbit-embed.workspace = true
 orbit-formation.workspace = true
+pgvector.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 uuid.workspace = true

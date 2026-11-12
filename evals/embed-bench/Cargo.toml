@@ -7,11 +7,13 @@ description = "Compares embedding models for Orbit's recall, on the owner's own 
 
 [dependencies]
 anyhow.workspace = true
-candle-core = { version = "0.11", features = ["metal"] }
 clap.workspace = true
-fastembed = { version = "7.7", features = ["qwen3", "metal"] }
+ndarray = "0.17"
+ort = "=2.0.0-rc.15"
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
+tokenizers = "0.23"
 tokio.workspace = true
 uuid.workspace = true

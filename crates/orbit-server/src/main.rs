@@ -1,6 +1,7 @@
 //! The Orbit engine: one brain per deployment.
 //!
-//! Phase 0 surface: ingest evidence, search it, recall exact strings, over REST and MCP.
+//! Phase 0 surface: ingest evidence, search it by meaning and by words, recall exact strings,
+//! over REST and MCP.
 
 mod auth;
 mod config;
@@ -9,7 +10,8 @@ mod mcp;
 mod routes;
 
 use anyhow::Context;
-use orbit_index::Indexer;
+use orbit_embed::{Embedder, OpenRouter};
+use orbit_index::{DenseIndexer, RawIndexer};
 use orbit_ledger::{Ledger, MIGRATOR};
 use orbit_recall::Recall;
 use std::sync::Arc;
@@ -31,11 +33,34 @@ async fn main() -> anyhow::Result<()> {
         .context("cannot connect to PostgreSQL")?;
     MIGRATOR.run(&pool).await.context("migrations failed")?;
 
-    tokio::spawn(indexing::run(Indexer::new(pool.clone(), config.tenant_id)));
+    tokio::spawn(indexing::raw(RawIndexer::new(pool.clone(), config.tenant_id)));
+
+    let embedder: Option<Arc<dyn Embedder>> = match &config.embedding {
+        Some(embedding) => {
+            let embedder: Arc<dyn Embedder> = Arc::new(OpenRouter::new(embedding.openrouter_key.clone())?);
+            let indexer = DenseIndexer::new(
+                pool.clone(),
+                config.tenant_id,
+                embedding.space.clone(),
+                embedder.clone(),
+            );
+            let state = indexer
+                .register()
+                .await
+                .context("cannot register the embedding space")?;
+            tracing::info!(space = %embedding.space.id, ?state, "dense channel on");
+            tokio::spawn(indexing::dense(indexer));
+            Some(embedder)
+        }
+        None => {
+            tracing::warn!("OPENROUTER_API_KEY is not set: dense channel off, search is by words only");
+            None
+        }
+    };
 
     let state = Arc::new(AppState {
         ledger: Ledger::new(pool.clone(), config.tenant_id),
-        recall: Recall::new(pool, config.tenant_id),
+        recall: Recall::new(pool, config.tenant_id, embedder),
         token: config.token.clone(),
     });
     let router = routes::router(state, &config);

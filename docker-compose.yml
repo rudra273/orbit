@@ -1,7 +1,7 @@
-# Local development database. A real deployment uses the same image or a managed PostgreSQL 18.
+# Local development database: PostgreSQL 18 with pgvector. A real deployment uses the same image, or a managed PostgreSQL 18 that offers the vector extension.
 services:
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18-trixie
     environment:
       POSTGRES_USER: orbit
       POSTGRES_PASSWORD: orbit-dev-only

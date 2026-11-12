@@ -2,7 +2,7 @@
 
 use chrono::Utc;
 use orbit_core::{AuthorRole, Integrity, Sensitivity};
-use orbit_index::Indexer;
+use orbit_index::RawIndexer;
 use orbit_ledger::{IncomingEvent, Ledger, SourceSpec, admit};
 use orbit_recall::{ExactRequest, LiteralRole, Recall, SearchRequest, Verdict};
 use sqlx::PgPool;
@@ -45,8 +45,8 @@ async fn brain(pool: &PgPool, turns: &[(AuthorRole, &str)]) -> Recall {
         })
         .collect();
     ledger.append_batch(source, &events).await.unwrap();
-    while Indexer::new(pool.clone(), TENANT).run_once(100).await.unwrap() > 0 {}
-    Recall::new(pool.clone(), TENANT)
+    while RawIndexer::new(pool.clone(), TENANT).run_once(100).await.unwrap() > 0 {}
+    Recall::new(pool.clone(), TENANT, None)
 }
 
 #[sqlx::test(migrator = "orbit_ledger::MIGRATOR")]

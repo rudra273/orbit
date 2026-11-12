@@ -15,11 +15,14 @@ orbit-formation = { path = "crates/orbit-formation" }
 orbit-revision = { path = "crates/orbit-revision" }
 orbit-import = { path = "crates/orbit-import" }
 orbit-index = { path = "crates/orbit-index" }
+orbit-embed = { path = "crates/orbit-embed" }
 
 anyhow = "1"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+half = "2"
+pgvector = { version = "0.4", features = ["sqlx", "halfvec"] }
 regex = "1"
 reqwest = { version = "0.13", features = ["json"] }
 rmcp = { version = "3.9", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }

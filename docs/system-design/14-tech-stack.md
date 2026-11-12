@@ -80,7 +80,7 @@ Reached only through the gateway, by tier. Names below are current defaults in c
 | `bulk` | Extraction, verification, summaries, fast planner | A small, fast model — e.g. Claude Haiku 5.5 (`claude-haiku-5-5`) — or an open-weight model served locally | Output is mechanically verified, which is what makes a small model acceptable |
 | `careful` | Consolidation (abstraction, association), disputed judgements, deep-path planning | A frontier model — e.g. Claude Opus 5.5 (`claude-opus-5-5`) | Runs offline in batches where possible |
 | `local` | Anything labelled `sensitive`; local-brain mode | Open-weight model on the user's or Orbit's own hardware | Quality floor |
-| Embedding | All dense vectors | An open-weight multilingual model (candidates: the Qwen3-Embedding family, BGE-M3; EmbeddingGemma on device) | Chosen by retrieval tests on OrbitBench, not by leaderboard rank |
+| Embedding | All dense vectors | **Qwen3-Embedding-8B** (open-weight, 4096 dimensions), reached through OpenRouter with data collection denied; EmbeddingGemma 2 as the offline and on-device fallback | Chosen by retrieval tests on the owner's history (2026-11-12, [evals/embed-bench](../../evals/embed-bench/README.md)), not by leaderboard rank; OrbitBench re-checks it. `sensitive` evidence is never sent to a hosted model |
 | Reranker | Deep-path relevance on evidence | Open-weight cross-encoder | Self-hosted |
 | Classifiers | Admission-time checks that must run before persistence (secret and paste detection, first sensitivity label) | Rules and small models on CPU | No per-call cost; no data leaves the server |
 

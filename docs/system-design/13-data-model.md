@@ -341,11 +341,23 @@ create table view (
   primary key (tenant_id, view_id, version)
 );
 
-create table embedding_s1 (                      -- one table per embedding space; early phases only
-  tenant_id uuid not null, node_kind text not null, node_id uuid not null,
-  v halfvec(1024) not null,
-  primary key (tenant_id, node_kind, node_id)
-) partition by hash (tenant_id);
+create table embedding_space (                   -- one model at one size; vectors compare only within a space
+  tenant_id uuid not null, space_id text not null, -- '<model>@<dims>'
+  model text not null, dims int not null,
+  query_prefix text not null, doc_prefix text not null,
+  hosted boolean not null,                        -- `sensitive` evidence is never sent to a hosted model
+  state text not null,                            -- building | active | retired; at most one active
+  primary key (tenant_id, space_id)
+);
+
+create table evidence_embedding (                -- early phases; claims and summaries get their own table
+  tenant_id uuid not null, space_id text not null,
+  evidence_id uuid not null, chunk int not null,
+  byte_start int not null, byte_end int not null, -- the chunk, exactly, within the evidence
+  v halfvec not null,                             -- full vector, for re-ranking
+  bits bit varying not null,                      -- 1-bit copy, scanned by Hamming distance
+  primary key (tenant_id, space_id, evidence_id, chunk)
+);
 ```
 
 ## 8. Working and prospective memory

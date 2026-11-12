@@ -1,4 +1,4 @@
-//! Recall. Phase 0: search over raw evidence, and exact-string lookup.
+//! Recall. Phase 0: search over raw evidence (by meaning and by words), and exact-string lookup.
 //!
 //! This is the baseline every later layer must beat. See
 //! `docs/architecture/08-retrieval.md` and `docs/validation/15-evaluation.md`.
@@ -8,11 +8,13 @@ pub mod search;
 mod text;
 
 pub use exact::{ExactMatch, ExactRequest, ExactResult, LiteralRole};
-pub use search::{Hit, SearchRequest, SearchResult};
+pub use search::{Channel, Hit, SearchRequest, SearchResult};
 
+use orbit_embed::Embedder;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// What a recall returns alongside its items. `not_found` is a real answer.
@@ -36,11 +38,17 @@ pub enum RecallError {
 pub struct Recall {
     pool: PgPool,
     tenant_id: Uuid,
+    /// Embeds queries for the dense channel; without one, search is by words only.
+    embedder: Option<Arc<dyn Embedder>>,
 }
 
 impl Recall {
-    pub fn new(pool: PgPool, tenant_id: Uuid) -> Self {
-        Self { pool, tenant_id }
+    pub fn new(pool: PgPool, tenant_id: Uuid, embedder: Option<Arc<dyn Embedder>>) -> Self {
+        Self {
+            pool,
+            tenant_id,
+            embedder,
+        }
     }
 
     async fn begin(&self) -> Result<sqlx::Transaction<'static, sqlx::Postgres>, sqlx::Error> {

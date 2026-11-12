@@ -1,9 +1,10 @@
-//! Stage 3, index raw: make new evidence searchable.
+//! Lexical and literal indexing: full-text vectors and detected literals for new evidence.
 //!
 //! Reads the change feed after a stored cursor and, for each new piece of evidence,
 //! writes its full-text vector and its literals. Idempotent: re-running a batch
-//! changes nothing. See `docs/architecture/06-memory-formation.md` section 2.
+//! changes nothing.
 
+use crate::IndexError;
 use orbit_core::sha256;
 use orbit_formation::{LiteralKind, detect_literals};
 use sqlx::{PgPool, Postgres, Transaction};
@@ -12,20 +13,14 @@ use uuid::Uuid;
 const CONSUMER: &str = "raw-index";
 const INDEXED_CHARS: usize = 200_000;
 
-#[derive(Debug, thiserror::Error)]
-pub enum IndexError {
-    #[error(transparent)]
-    Database(#[from] sqlx::Error),
-}
-
-/// Indexes the evidence of one brain.
+/// Keeps the full-text and literal indexes of one brain up to date.
 #[derive(Clone)]
-pub struct Indexer {
+pub struct RawIndexer {
     pool: PgPool,
     tenant_id: Uuid,
 }
 
-impl Indexer {
+impl RawIndexer {
     pub fn new(pool: PgPool, tenant_id: Uuid) -> Self {
         Self { pool, tenant_id }
     }

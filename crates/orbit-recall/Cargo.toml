@@ -6,14 +6,18 @@ publish.workspace = true
 
 [dependencies]
 orbit-core.workspace = true
+orbit-embed.workspace = true
 chrono.workspace = true
+pgvector.workspace = true
 schemars.workspace = true
 serde.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+orbit-embed = { workspace = true, features = ["testing"] }
 orbit-index.workspace = true
 orbit-ledger.workspace = true
 tokio.workspace = true
