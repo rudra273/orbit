@@ -3,7 +3,12 @@
 use sha2::{Digest, Sha256};
 
 /// Hash of one ledger row, bound to the row before it.
-pub fn row_hash(prev: Option<&[u8; 32]>, content_sha256: &[u8; 32], idempotency_key: &str, occurred_at_micros: i64) -> [u8; 32] {
+pub fn row_hash(
+    prev: Option<&[u8; 32]>,
+    content_sha256: &[u8; 32],
+    idempotency_key: &str,
+    occurred_at_micros: i64,
+) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(prev.map_or(&[0u8; 32][..], |p| &p[..]));
     h.update(content_sha256);

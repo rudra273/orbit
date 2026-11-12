@@ -53,7 +53,7 @@ The mask is applied **before** ranking, so data a client may not see cannot even
 
 ## 3. Understanding the query
 
-The fast path uses no generative model: grammar-based literal and time parsers, an alias dictionary for entity linking, a small intent classifier, and one embedding call.
+The fast path uses no generative model: grammar-based literal and time parsers, an alias dictionary for entity linking, a small intent classifier (a local model, or the `decide` tier when it is fast enough), and one embedding call.
 
 **Cues extracted:** literals (quoted strings, identifiers, paths, versions) · entities · time expressions ("last September"; "before I switched to Rust", which is resolved through the belief it refers to) · memory kinds · scope, from the project binding, the client's grant profile and working memory.
 

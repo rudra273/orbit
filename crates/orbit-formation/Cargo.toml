@@ -1,0 +1,11 @@
+[package]
+name = "orbit-formation"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+orbit-core.workspace = true
+regex.workspace = true
+serde.workspace = true
+thiserror.workspace = true

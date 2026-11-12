@@ -29,12 +29,19 @@ impl Anchor {
         if byte_start >= byte_end {
             return Err(AnchorError::Empty);
         }
-        let span = content.get(byte_start as usize..byte_end as usize).ok_or(AnchorError::OutOfBounds {
-            start: byte_start,
-            end: byte_end,
-            len: content.len(),
-        })?;
-        Ok(Self { evidence_id, byte_start, byte_end, span_sha256: sha256(span) })
+        let span = content
+            .get(byte_start as usize..byte_end as usize)
+            .ok_or(AnchorError::OutOfBounds {
+                start: byte_start,
+                end: byte_end,
+                len: content.len(),
+            })?;
+        Ok(Self {
+            evidence_id,
+            byte_start,
+            byte_end,
+            span_sha256: sha256(span),
+        })
     }
 
     /// The anchored bytes, if the content still matches the recorded hash.

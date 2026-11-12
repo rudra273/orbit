@@ -50,6 +50,8 @@ flowchart LR
 | 9 | **Fast revise** | Explicit, unambiguous user claims update beliefs immediately | – | seconds |
 | 10 | **Publish** | Graph delta, working memory, change feed to other devices | – | seconds |
 
+Fixed-choice judgements in stages 5–9 — speech act, salience tier, refined sensitivity, instruction-likeness, ratification strength — are asked together as one multi-question call to the `decide` model tier ([14 §6](../system-design/14-tech-stack.md#6-models)). Generation (claims, quotes, summaries) stays with LLMs.
+
 Two properties follow from the order. **A write is durable and lexically searchable before any model has looked at it**, so a model failure can delay understanding but cannot lose a memory. And **everything from stage 3 on is replayable** from the ledger, with a different model if need be.
 
 ## 3. Segmentation
@@ -100,7 +102,8 @@ A literal is a typed exact string with an anchor. Detection is grammar-based and
 
 | Kind | Detected by | Lookup key (`norm`) |
 |---|---|---|
-| `command` | Code fences and inline code, shell-prompt patterns, known binaries | Whitespace-collapsed |
+| `code` | Fenced code blocks, as one literal | As-is |
+| `command` | Inline code spans; shell-prompt patterns, known binaries | Whitespace-collapsed |
 | `path` | Path grammar, extensions | Separators normalised; case kept |
 | `url` | URL grammar | Scheme and host lower-cased |
 | `version` | Version grammars next to an entity | Numeric tuple |

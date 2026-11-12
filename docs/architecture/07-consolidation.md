@@ -43,7 +43,11 @@ def step(state, c):                       # state: versions in one slot family; 
     return state.assert_(c)
 ```
 
-- `relation` is deterministic when both sides are structured (same slot, `functional` predicate, different value ⇒ contradiction) and otherwise a model judgement over the two statements **and their evidence**. Judgements are stored with the model and prompt version that made them, so they can be audited and redone.
+- A restatement (`same` or `refines`) only reinforces or refines a version **in the same scope**. Said in another scope, it is its own fact: "Rust for the engine" does not support "Rust in general".
+- When the two scopes **overlap without one containing the other** (`{project: orbit}` against `{domain: systems}`), both versions stay current and are linked as overlapping. Supersession and authority apply only within one scope, so nothing is silently lost; if both apply to a query, recall reports a conflict.
+- A correction from a less credible source than what it corrects does not retract it: the correction is recorded as an attack and sent to review.
+- Disputed versions coexist in the database on purpose; the one-current-version constraint skips them.
+- `relation` is deterministic when both sides are structured (same slot, `functional` predicate, different value ⇒ contradiction) and otherwise a model judgement over the two statements **and their evidence** — a four-way choice, answered by the `decide` tier, with low-confidence cases escalated to an LLM. Judgements are stored with the model and prompt version that made them, so they can be audited and redone.
 - `authority(c)` is the tuple *(integrity, explicitness, act strength)*. A typed, explicit user statement outranks anything relayed, inferred or reported. Recency is deliberately not part of authority; it is handled by step 2 and only for predicates that can change.
 - Step 4 is a feature. A disputed belief is served as disputed, with both sides and their sources.
 

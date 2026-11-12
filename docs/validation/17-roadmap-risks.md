@@ -25,6 +25,8 @@ Build the part that can never be wrong, and the means to measure everything afte
 | Retrieval over evidence | `orbit_recall` and `orbit_exact` on a minimal single-user MCP server — this is Option C from [04](../research/04-architecture-options.md) |
 | Evaluation harness | Invariants 1–3; OrbitBench generator at 100k and 1M tokens; LongMemEval-S under protocol; a first dogfood question set |
 
+**Progress (2026-11-12):** ledger, admission, Claude Code and Codex importers, raw full-text and literal indexing, `orbit_recall` and `orbit_exact` over REST and MCP — done and run on the owner's real history. Open: the dense (embedding) channel, the evaluation harness, the dogfood questions.
+
 **Exit:** ledger invariants pass · baseline numbers recorded on every suite · the token-flow figures in [16](16-cost-and-scale.md) replaced by measurements · the owner uses it daily.
 
 ### Phase 1 — Claims and beliefs · ~8–12 weeks

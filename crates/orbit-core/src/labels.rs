@@ -6,11 +6,11 @@
 use serde::{Deserialize, Serialize};
 
 macro_rules! label {
-    ($(#[$doc:meta])* $name:ident { $($variant:ident => $text:literal),+ $(,)? }) => {
+    ($(#[$doc:meta])* $name:ident { $($(#[$vdoc:meta])* $variant:ident => $text:literal),+ $(,)? }) => {
         $(#[$doc])*
         #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
         #[serde(rename_all = "snake_case")]
-        pub enum $name { $($variant),+ }
+        pub enum $name { $($(#[$vdoc])* $variant),+ }
 
         impl $name {
             /// The spelling used in JSON and in the database enum.
@@ -64,7 +64,10 @@ label!(
 label!(
     Lifecycle {
         Current => "current",
+        /// Stopped being true in the world; its valid time is closed.
         Superseded => "superseded",
+        /// Replaced by a more precise statement of the same thing.
+        Refined => "refined",
         Retracted => "retracted",
         Expired => "expired",
     }
@@ -79,6 +82,47 @@ label!(
         ThirdParty => "third_party",
     }
 );
+
+label!(
+    /// Whether a claim was said outright or only implied. Weak to strong.
+    Explicitness {
+        Implicit => "implicit",
+        Explicit => "explicit",
+    }
+);
+
+label!(
+    /// What a sentence does: the speech act a claim was made with.
+    SpeechAct {
+        Assert => "assert",
+        Prefer => "prefer",
+        Decide => "decide",
+        Plan => "plan",
+        Commit => "commit",
+        Instruct => "instruct",
+        Correct => "correct",
+        Reject => "reject",
+        Ask => "ask",
+        Hypothesize => "hypothesize",
+        Define => "define",
+        Report => "report",
+        Evaluate => "evaluate",
+        Rationale => "rationale",
+        Ratify => "ratify",
+    }
+);
+
+impl SpeechAct {
+    /// How much commitment the act carries, used when two claims conflict.
+    pub fn force(self) -> u8 {
+        match self {
+            Self::Decide | Self::Commit | Self::Instruct | Self::Correct => 3,
+            Self::Prefer | Self::Assert | Self::Define | Self::Reject | Self::Plan | Self::Ratify => 2,
+            Self::Report | Self::Evaluate | Self::Rationale => 1,
+            Self::Ask | Self::Hypothesize => 0,
+        }
+    }
+}
 
 impl Integrity {
     /// Integrity of something derived from several sources: the weakest of them.

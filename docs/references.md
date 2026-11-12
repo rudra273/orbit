@@ -151,6 +151,11 @@
 - ✓ MCP project blog, [2026-07-28 release](https://blog.modelcontextprotocol.io/posts/2026-07-28/); Agentic AI Foundation, [migrating sessions to stateless requests](https://aaif.io/blog/migrate-sessions-to-stateless-requests-with-mcp-2026-07-28)
 - OAuth 2.1 (IETF draft); RFC 6750 (bearer tokens); RFC 7591 (dynamic client registration); RFC 8414 (authorization server metadata); RFC 8707 (resource indicators); RFC 9207 (issuer identification); RFC 9728 (protected resource metadata); OAuth Client ID Metadata Documents (IETF draft) — as referenced by the MCP authorization specification.
 
+## Decision models
+
+- ✓ Google. Gemini Decision 1 and the Decisions API (accessed 2026-11-12). [model](https://aistudio.google.com/docs/models/gemini-decision-1) · [API](https://aistudio.google.com/docs/decisions-api)
+- ✓ TypeSafe AI. Jev decision model (early access, September 2026), via secondary write-ups: [Zapier](https://zapier.com/blog/jev/) · [Thoughtworks](https://www.thoughtworks.com/insights/blog/generative-ai/jev-decision-models-what-need-know-why) · [StationX security test](https://app.stationx.net/articles/jev-ai-cybersecurity)
+
 ## Infrastructure
 
 - ✓ PostgreSQL 19 documentation, [property graphs](https://www.postgresql.org/docs/19/ddl-property-graphs.html); [beta 1 announcement](https://www.postgresql.org/about/news/postgresql-19-beta-1-3313/); commentary on SQL/PGQ limits, [thebuild.com](https://thebuild.com/blog/sqlpgq-in-postgresql-19-graph-queries-without-the-graph-database/)

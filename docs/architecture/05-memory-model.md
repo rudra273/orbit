@@ -73,7 +73,7 @@ Every claim and belief carries labels that are computed, not written by a model.
 
 ### 3.3 Where in its life: `lifecycle`
 
-`current` · `superseded` (was true, no longer; valid-time closed) · `retracted` (was never right, or lost all support; system-time closed) · `expired` (a transient state whose time ran out).
+`current` · `superseded` (was true, no longer; valid-time closed) · `refined` (replaced by a more precise statement of the same thing; its support carries over) · `retracted` (was never right, or lost all support; system-time closed) · `expired` (a transient state whose time ran out).
 
 ### 3.4 How far to trust the channel: `integrity`
 

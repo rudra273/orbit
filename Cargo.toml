@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "evals/embed-bench"]
 
 [workspace.package]
 version = "0.0.1"
@@ -11,12 +11,21 @@ publish = false
 orbit-core = { path = "crates/orbit-core" }
 orbit-ledger = { path = "crates/orbit-ledger" }
 orbit-recall = { path = "crates/orbit-recall" }
+orbit-formation = { path = "crates/orbit-formation" }
+orbit-revision = { path = "crates/orbit-revision" }
+orbit-import = { path = "crates/orbit-import" }
+orbit-index = { path = "crates/orbit-index" }
 
 anyhow = "1"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+regex = "1"
+reqwest = { version = "0.13", features = ["json"] }
+rmcp = { version = "3.9", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }
+schemars = { version = "1", features = ["chrono04"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "macros", "postgres", "uuid", "chrono", "json", "migrate"] }
 thiserror = "2"

@@ -274,7 +274,7 @@ It is optional, and the trade-offs are real: it sits in the request path (latenc
 | Dependency | How it is kept replaceable |
 |---|---|
 | Connected AI | Any MCP client; or REST; or the gateway. Tool results are plain structured data with no model-specific prompting |
-| Extraction and consolidation models | Called through an internal gateway by *tier* (bulk, careful), not by name; every derived row records the model and prompt that produced it; re-derivable |
+| Extraction and consolidation models | Called through an internal gateway by *tier* (decide, bulk, careful), not by name; every derived row records the model and prompt that produced it; re-derivable |
 | Embedding model | An explicit *embedding space* id on every vector; two spaces can coexist during migration; a self-hostable open-weight model is the baseline so no external provider is required |
 | Fast-path retrieval | No generative model at all |
 | The client's model | Never used (Sampling is deprecated, and borrowing a client's model would make memory quality depend on who is connected) |

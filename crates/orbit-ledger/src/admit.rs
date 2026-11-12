@@ -3,12 +3,12 @@
 use crate::secrets::redact_secrets;
 use chrono::{DateTime, Utc};
 use orbit_core::{AuthorRole, Integrity, Sensitivity, sha256};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Largest single piece of evidence accepted inline. Bigger bodies will go to object storage.
 pub const MAX_CONTENT_BYTES: usize = 1 << 20;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct IncomingEvent {
     /// Position within its source (turn number, chunk number).
     pub seq: i32,
@@ -72,7 +72,11 @@ pub fn admit(event: IncomingEvent) -> Result<Admitted, AdmissionError> {
     }
 
     let (content, secrets) = redact_secrets(&event.content);
-    let taint = if secrets > 0 { vec!["secret_redacted".to_string()] } else { Vec::new() };
+    let taint = if secrets > 0 {
+        vec!["secret_redacted".to_string()]
+    } else {
+        Vec::new()
+    };
     let content = content.into_bytes();
 
     Ok(Admitted {

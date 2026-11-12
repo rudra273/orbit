@@ -27,7 +27,9 @@ pub fn redact_secrets(text: &str) -> (String, usize) {
 }
 
 fn flush(token: &mut String, out: &mut String) -> usize {
-    let secret = KEY_PREFIXES.iter().any(|p| token.starts_with(p) && token.len() >= p.len() + MIN_SECRET_TAIL);
+    let secret = KEY_PREFIXES
+        .iter()
+        .any(|p| token.starts_with(p) && token.len() >= p.len() + MIN_SECRET_TAIL);
     out.push_str(if secret { PLACEHOLDER } else { token });
     token.clear();
     secret as usize

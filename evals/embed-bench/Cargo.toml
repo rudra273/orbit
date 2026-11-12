@@ -1,0 +1,17 @@
+[package]
+name = "embed-bench"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Compares embedding models for Orbit's recall, on the owner's own imported history."
+
+[dependencies]
+anyhow.workspace = true
+candle-core = { version = "0.11", features = ["metal"] }
+clap.workspace = true
+fastembed = { version = "7.7", features = ["qwen3", "metal"] }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+uuid.workspace = true

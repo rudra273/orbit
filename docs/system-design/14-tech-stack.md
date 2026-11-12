@@ -45,7 +45,7 @@ But the riskiest part of this project is **algorithmic quality**, and that is le
 | 0 — prove the algorithms | Ledger and ingest only, or nothing yet | Extraction, verification, revision and retrieval prototypes; the whole evaluation harness |
 | 1 onward | Ledger, API, MCP, revision engine, recall engine, indexer, sync | Derivation workers (model-heavy), consolidation, evaluation |
 
-Revision moves to Rust once its behaviour is pinned down by tests, because it must be deterministic and identical on server and device. Extraction stays in Python; it is I/O-bound on model calls and changes often.
+Revision and every mechanical check (literal detection, handle validation, anchoring) live in Rust, because they must be deterministic, identical on server and device, and run on every write. Python workers only call models and return proposals; the engine verifies and applies them.
 
 ## 4. Data
 
@@ -76,12 +76,24 @@ Reached only through the gateway, by tier. Names below are current defaults in c
 
 | Tier | Used for | Example default | Notes |
 |---|---|---|---|
-| `bulk` | Extraction, verification, relation judgements, summaries, fast planner | A small, fast model — e.g. Claude Haiku 5.5 (`claude-haiku-5-5`) — or an open-weight model served locally | Output is mechanically verified, which is what makes a small model acceptable |
+| `decide` | Fixed-choice judgements: speech act, salience tier, sensitivity check, instruction-likeness, relation (same / refines / contradicts / unrelated), ratification strength, state vs trait, query intent | A non-generative decision model — e.g. Gemini Decision 1 (`gemini-decision-1`) or Jev — or a small distilled classifier | Returns a probability per option; several questions about one input in a single call |
+| `bulk` | Extraction, verification, summaries, fast planner | A small, fast model — e.g. Claude Haiku 5.5 (`claude-haiku-5-5`) — or an open-weight model served locally | Output is mechanically verified, which is what makes a small model acceptable |
 | `careful` | Consolidation (abstraction, association), disputed judgements, deep-path planning | A frontier model — e.g. Claude Opus 5.5 (`claude-opus-5-5`) | Runs offline in batches where possible |
 | `local` | Anything labelled `sensitive`; local-brain mode | Open-weight model on the user's or Orbit's own hardware | Quality floor |
 | Embedding | All dense vectors | An open-weight multilingual model (candidates: the Qwen3-Embedding family, BGE-M3; EmbeddingGemma on device) | Chosen by retrieval tests on OrbitBench, not by leaderboard rank |
 | Reranker | Deep-path relevance on evidence | Open-weight cross-encoder | Self-hosted |
-| Classifiers | Intent, salience, sensitivity, instruction-likeness | Small distilled models on CPU | No per-call cost |
+| Classifiers | Admission-time checks that must run before persistence (secret and paste detection, first sensitivity label) | Rules and small models on CPU | No per-call cost; no data leaves the server |
+
+**The `decide` tier.** Many pipeline steps are not generation at all but *pick one of these options*. Decision models answer exactly that: given an input and a set of typed questions (yes/no, choice, ordered score), they return a probability for every option and generate no text. Gemini Decision 1, for example, scores up to 1,000 questions over one input in a single pass and accepts text, images, audio, video and PDFs. For Orbit that means one call per turn answers all of its classification questions together, and screenshots or voice notes can be triaged even though they cannot yet be anchored.
+
+Rules for using it:
+
+- Every choice question includes an explicit `other` / `none` option, and answers below a confidence threshold fall back to the `bulk` tier. Decision models spread probability across the given options even when none fits.
+- Only the content being judged is sent, never surrounding history; these APIs are billed on input and may not cache it.
+- Probabilities feed Orbit's own calibrated confidence; they are inputs, not the final number.
+- `sensitive` content goes to a local classifier instead. Before any personal data is sent to a hosted decision model, its data-use terms are checked: no free tiers whose content may be used for training, and retention must be acceptable.
+- Classifier output never grants trust. Poisoning defence stays structural ([11 §3](../architecture/11-security-privacy.md#3-the-memory-firewall)); input can argue for its own classification.
+- Which model fills the tier is decided by accuracy on OrbitBench's labelled judgements against the `bulk` tier, at equal or lower cost.
 
 Every call records provider, model id, prompt hash and the ids of what it processed. Swapping a tier's model starts a new derivation epoch that is evaluated before it replaces the old one.
 
@@ -120,14 +132,17 @@ Every call records provider, model id, prompt hash and the ids of what it proces
 ```text
 orbit/
   crates/
-    orbit-core/      types, ids, handles, policy, revision — pure, no I/O
-    orbit-ledger/    admission, append, hash chain
+    orbit-core/      shared types: ids, labels, scope, anchors, hash chain — pure, no I/O
+    orbit-formation/ literal detection, handle templates, claim verification — pure
+    orbit-revision/  scope-before-supersede, slot replay, assessment — pure
+    orbit-ledger/    admission, append, hash chain storage; owns the migrations
     orbit-recall/    channels, fusion, spreading, grounding, weaving
     orbit-index/     indexer and image format
     orbit-server/    REST + MCP handlers
     orbit-sync/      change feed, device protocol
     orbit-cli/       import, export, agents-md, admin
-  workers/           Python: extraction, verification, consolidation
+  migrations/        PostgreSQL schema, applied at start-up
+  workers/           Python: model calls only (extraction proposals, summaries); mechanical checks live in Rust
   evals/             invariants, OrbitBench generator, benchmark harnesses
   connectors/        agent hooks, transcript importers, browser extension
   clients/           desktop, android, web
@@ -143,5 +158,6 @@ orbit/
 | Brain-image format: Lance or custom | Cold start, filtered search, compaction, deletion |
 | Embedding model and dimension | Retrieval suites at fixed cost |
 | Which small model clears the extraction bar | Extraction precision/recall by model |
+| Which model fills the `decide` tier, and whether it beats the `bulk` tier | Accuracy and calibration on labelled judgements; cost per turn; data-use terms |
 | Authorization server | The criteria in §7 |
 | Workflow engine for consolidation | Operational fit once volume justifies one |
